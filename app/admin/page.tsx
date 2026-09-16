@@ -46,26 +46,32 @@ export default function AdminPage() {
   const [preview, setPreview] = useState(true);
 
   useEffect(() => {
+    if (!db) {
+      setAccess("denied");
+      setNotice("部署环境缺少 Supabase 配置。请在 Vercel Environment Variables 中添加 NEXT_PUBLIC_SUPABASE_URL 和 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY，然后重新部署。");
+      return;
+    }
+    const database = db;
     let alive = true;
     async function load(next: Session | null) {
       if (!alive) return;
       setSession(next); setAccess("loading"); setPosts([]); setDraft(emptyPost()); setDirty(false);
       if (!next) { setAccess("guest"); return; }
-      const membership = await db.from("blog_admins").select("user_id").eq("user_id", next.user.id).maybeSingle();
+      const membership = await database.from("blog_admins").select("user_id").eq("user_id", next.user.id).maybeSingle();
       if (!alive) return;
       if (membership.error || !membership.data) {
         setAccess("denied");
         setNotice(membership.error ? errorMessage(membership.error) : "该账号尚未获得管理员权限，请按 data.sql 末尾说明授权。");
         return;
       }
-      const result = await db.from("blog_posts").select("*").order("updated_at", { ascending: false });
+      const result = await database.from("blog_posts").select("*").order("updated_at", { ascending: false });
       if (!alive) return;
       setAccess("admin");
       if (result.error) setNotice(errorMessage(result.error));
       else { setPosts(result.data as Post[]); setNotice(""); }
     }
     let currentUser: string | undefined;
-    const { data: listener } = db.auth.onAuthStateChange((event, next) => {
+    const { data: listener } = database.auth.onAuthStateChange((event, next) => {
       if (event === "INITIAL_SESSION" || next?.user.id !== currentUser) {
         currentUser = next?.user.id;
         // Auth callback must return before making another Supabase request.
@@ -95,6 +101,7 @@ export default function AdminPage() {
   }
   async function login(event: React.FormEvent) {
     event.preventDefault(); setBusy(true); setNotice("");
+    if (!db) { setBusy(false); setNotice("Supabase 环境变量尚未配置。"); return; }
     try {
       const { error } = await db.auth.signInWithPassword({ email: email.trim(), password });
       if (error) setNotice(errorMessage(error));
@@ -103,6 +110,7 @@ export default function AdminPage() {
     finally { setBusy(false); }
   }
   async function logout() {
+    if (!db) return;
     if (dirty && !window.confirm("当前修改尚未保存，确定退出？")) return;
     setBusy(true);
     const { error } = await db.auth.signOut({ scope: "local" });
@@ -111,6 +119,7 @@ export default function AdminPage() {
   }
   async function save(event: React.FormEvent) {
     event.preventDefault();
+    if (!db) { setNotice("Supabase 环境变量尚未配置。"); return; }
     if (draft.cover_url && !httpsUrl(draft.cover_url)) { setNotice("封面必须为有效的 HTTPS 图床链接。"); return; }
     if (!draft.title.trim()) { setNotice("请输入文章标题。"); return; }
     if (draft.status === "published" && !draft.content.trim()) { setNotice("发布前请填写文章正文。"); return; }
@@ -133,6 +142,7 @@ export default function AdminPage() {
     finally { setBusy(false); }
   }
   async function remove() {
+    if (!db) { setNotice("Supabase 环境变量尚未配置。"); return; }
     if (!draft.id || !window.confirm("确定永久删除这篇文章？此操作无法撤销。")) return;
     setBusy(true);
     try {
@@ -145,7 +155,7 @@ export default function AdminPage() {
     finally { setBusy(false); }
   }
   async function upload(file?: File) {
-    if (!file || !session) return;
+    if (!file || !session || !db) return;
     const extension = mimeExtensions[file.type];
     if (!extension || file.size > 5 * 1024 * 1024) {
       setNotice("请选择不超过 5MB 的 JPG、PNG、WebP 或 GIF 图片。"); return;
