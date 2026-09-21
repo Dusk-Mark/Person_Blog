@@ -13,6 +13,7 @@ type Post = {
   status: "draft" | "published"; updated_at: string;
 };
 type Draft = Omit<Post, "id" | "updated_at"> & { id?: string };
+type Holding = { id: string; source: "gate" | "manual"; asset: string; account: string; amount: number; price_usd: number | null; is_public: boolean; synced_at: string };
 const emptyPost = (): Draft => ({
   title: "", slug: "", excerpt: "", category: "软件工程",
   content: "", cover_url: "", status: "draft",
@@ -48,6 +49,10 @@ export default function AdminPage() {
   const [notice, setNotice] = useState("");
   const [filter, setFilter] = useState("");
   const [preview, setPreview] = useState(true);
+  const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [holdingForm, setHoldingForm] = useState({ asset: "", account: "spot", amount: "", price_usd: "", is_public: true });
+  const [holdingBusy, setHoldingBusy] = useState(false);
+  const [holdingNotice, setHoldingNotice] = useState("");
   const [showHint, setShowHint] = useState(false);
   const [recovery, setRecovery] = useState<Autosave | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -100,6 +105,8 @@ export default function AdminPage() {
       } catch { /* 忽略损坏的缓存 */ }
       if (result.error) setNotice(errorMessage(result.error));
       else { setPosts(result.data as Post[]); setNotice(""); }
+      const holdingResult = await database.from("portfolio_holdings").select("*").order("value_usd", { ascending: false, nullsFirst: false });
+      if (!holdingResult.error) setHoldings(holdingResult.data as Holding[]);
     }
     let currentUser: string | undefined;
     const { data: listener } = database.auth.onAuthStateChange((event, next) => {
@@ -223,6 +230,26 @@ export default function AdminPage() {
     } catch { setNotice("上传失败，请检查网络与 Storage 配置。"); }
     finally { setBusy(false); }
   }
+  async function syncGate() {
+    if (!db || !session) return;
+    setHoldingBusy(true); setHoldingNotice("");
+    const { data } = await db.auth.getSession();
+    const response = await fetch("/api/gate/sync", { method: "POST", headers: { Authorization: `Bearer ${data.session?.access_token || ""}` } });
+    const result = await response.json() as { error?: string; count?: number };
+    if (!response.ok) setHoldingNotice(result.error || "Gate 同步失败。");
+    else { setHoldingNotice(`Gate 已同步 ${result.count ?? 0} 项资产。`); const refreshed = await db.from("portfolio_holdings").select("*").order("value_usd", { ascending: false, nullsFirst: false }); if (!refreshed.error) setHoldings(refreshed.data as Holding[]); }
+    setHoldingBusy(false);
+  }
+  async function addManualHolding(event: React.FormEvent) {
+    event.preventDefault(); if (!db || !session) return;
+    const asset = holdingForm.asset.trim().toUpperCase(); const amount = Number(holdingForm.amount); const price = holdingForm.price_usd ? Number(holdingForm.price_usd) : null;
+    if (!/^[A-Z0-9]{2,20}$/.test(asset) || !Number.isFinite(amount) || amount < 0 || (price !== null && (!Number.isFinite(price) || price < 0))) { setHoldingNotice("请填写合法的资产代码、数量和价格。"); return; }
+    setHoldingBusy(true); setHoldingNotice("");
+    const { data, error } = await db.from("portfolio_holdings").upsert({ source: "manual", asset, account: holdingForm.account || "spot", amount, price_usd: price, is_public: holdingForm.is_public, synced_at: new Date().toISOString() }, { onConflict: "owner_id,source,account,asset" }).select("*").single();
+    if (error) setHoldingNotice(errorMessage(error)); else { setHoldings(previous => [data as Holding, ...previous.filter(item => item.id !== data.id)]); setHoldingForm({ asset: "", account: "spot", amount: "", price_usd: "", is_public: true }); setHoldingNotice("手动持仓已保存。"); }
+    setHoldingBusy(false);
+  }
+  async function removeHolding(id: string) { if (!db || !window.confirm("删除这项持仓？")) return; const { error } = await db.from("portfolio_holdings").delete().eq("id", id); if (error) setHoldingNotice(errorMessage(error)); else setHoldings(previous => previous.filter(item => item.id !== id)); }
 
   return <main className="admin-shell">
     <header className="admin-header"><Link href="/" onClick={leaveEditor}>NILING_DUSK <span>/ 管理后台</span></Link><div><Link href="/" onClick={leaveEditor}>查看博客</Link>{session && <button disabled={busy} onClick={logout}>退出登录</button>}</div></header>
@@ -245,6 +272,7 @@ export default function AdminPage() {
           <p className="admin-help">已发布文章对所有访客可见，草稿仅管理员可见。</p>
         </aside>
         <section className="admin-editor"><div className="admin-editor-heading"><div><p className="admin-kicker">WRITE · THINK · BUILD</p><h2>{draft.id ? "编辑文章" : "新的创作"}{dirty && <span> · 未保存</span>}</h2></div></div>
+          <section className="admin-portfolio"><div className="admin-portfolio-head"><div><p className="admin-kicker">PORTFOLIO</p><h3>持仓管理</h3></div><button type="button" className="admin-primary" disabled={holdingBusy} onClick={syncGate}>{holdingBusy ? "同步中…" : "同步 Gate"}</button></div><p className="admin-help">Gate 密钥仅由服务端读取。只读 API 不会执行交易；没有 Gate 配置时仍可使用手动持仓。</p>{holdingNotice && <p className="admin-notice">{holdingNotice}</p>}<div className="admin-holding-list">{holdings.map(item => <div className="admin-holding-row" key={item.id}><strong>{item.asset}</strong><span>{item.source === "gate" ? "Gate" : "手动"} · {item.account}</span><span>{item.amount}</span><span>{item.price_usd == null ? "—" : `$${item.price_usd}`}</span><button type="button" onClick={() => removeHolding(item.id)}>删除</button></div>)}{!holdings.length && <p className="admin-help">暂无持仓记录。</p>}</div><form className="admin-holding-form" onSubmit={addManualHolding}><input aria-label="资产代码" placeholder="资产，如 BTC" value={holdingForm.asset} onChange={e => setHoldingForm({...holdingForm, asset:e.target.value})}/><input aria-label="账户" placeholder="账户，如 spot" value={holdingForm.account} onChange={e => setHoldingForm({...holdingForm, account:e.target.value})}/><input aria-label="数量" type="number" min="0" step="any" placeholder="数量" value={holdingForm.amount} onChange={e => setHoldingForm({...holdingForm, amount:e.target.value})}/><input aria-label="美元价格" type="number" min="0" step="any" placeholder="美元价格" value={holdingForm.price_usd} onChange={e => setHoldingForm({...holdingForm, price_usd:e.target.value})}/><label className="admin-public-check"><input type="checkbox" checked={holdingForm.is_public} onChange={e => setHoldingForm({...holdingForm, is_public:e.target.checked})}/> 公开</label><button type="submit" disabled={holdingBusy}>添加手动持仓</button></form></section>
           {notice && <p className="admin-notice" role="status">{notice}</p>}
           {recovery && <div className="admin-recovery" role="alert">
             <div><strong>检测到上次未保存的草稿</strong><p>保存于 {new Date(recovery.savedAt).toLocaleString("zh-CN", { hour12: false })}，可能因浏览器意外关闭而中断。恢复后可继续编辑并保存。</p></div>

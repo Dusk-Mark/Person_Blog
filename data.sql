@@ -66,6 +66,33 @@ create trigger blog_post_updated before update on public.blog_posts
 for each row execute function public.touch_blog_post();
 create index if not exists blog_posts_updated_idx on public.blog_posts(updated_at desc);
 
+create table if not exists public.portfolio_holdings (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  source text not null check (source in ('gate', 'manual')),
+  asset text not null check (asset = upper(asset) and char_length(asset) between 2 and 20),
+  account text not null default 'spot',
+  amount numeric not null default 0 check (amount >= 0),
+  avg_price_usd numeric check (avg_price_usd is null or avg_price_usd >= 0),
+  price_usd numeric check (price_usd is null or price_usd >= 0),
+  value_usd numeric generated always as (case when price_usd is null then null else amount * price_usd end) stored,
+  is_public boolean not null default true,
+  synced_at timestamptz not null default now(),
+  unique (owner_id, source, account, asset)
+);
+alter table public.portfolio_holdings enable row level security;
+revoke all on public.portfolio_holdings from anon, authenticated;
+grant select on public.portfolio_holdings to anon, authenticated;
+grant insert, update, delete on public.portfolio_holdings to authenticated;
+drop policy if exists "Public read public holdings" on public.portfolio_holdings;
+create policy "Public read public holdings" on public.portfolio_holdings
+  for select to anon, authenticated using (is_public = true);
+drop policy if exists "Admins manage holdings" on public.portfolio_holdings;
+create policy "Admins manage holdings" on public.portfolio_holdings
+  for all to authenticated using ((select public.is_blog_admin()))
+  with check ((select public.is_blog_admin()));
+create index if not exists portfolio_holdings_public_idx on public.portfolio_holdings(is_public, synced_at desc);
+
 -- 图床：封面链接公开可访问，草稿数据仍然仅管理员可读取。
 -- 只允许 JPEG / PNG / WebP / GIF，最大 5MB，禁止 SVG。
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

@@ -10,6 +10,7 @@ type PublicPost = {
   id: string; title: string; category: string; date: string; text: string;
   image: string; time: number; content: string;
 };
+type Holding = { id: string; asset: string; amount: number; value_usd: number | null; source: string; synced_at: string };
 const categories = ["最新文章", "加密货币", "美股", "软件工程", "生活随笔"];
 
 function Icon({ name }: { name: string }) {
@@ -20,6 +21,8 @@ function Icon({ name }: { name: string }) {
 
 export default function Home() {
   const [posts, setPosts] = useState<PublicPost[]>([]);
+  const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [holdingsUpdated, setHoldingsUpdated] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [reload, setReload] = useState(0);
@@ -53,6 +56,15 @@ export default function Home() {
     }
     void loadPosts();
     return () => controller.abort();
+  }, [reload]);
+  useEffect(() => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+    if (!url || !key) return;
+    fetch(url + "/rest/v1/portfolio_holdings?select=id,asset,amount,value_usd,source,synced_at&is_public=eq.true&order=value_usd.desc.nullslast", { headers: { apikey: key }, cache: "no-store" })
+      .then(response => response.ok ? response.json() : [])
+      .then(rows => { if (Array.isArray(rows)) { setHoldings(rows); setHoldingsUpdated(rows[0]?.synced_at ?? null); } })
+      .catch(() => undefined);
   }, [reload]);
   const [category, setCategory] = useState("最新文章");
   const [search, setSearch] = useState("");
@@ -88,6 +100,7 @@ export default function Home() {
         {!loading && !loadError && filtered.length === 0 && <p className="empty">{posts.length ? "没有找到相关文章，试试其他关键词。" : "新的思考正在酝酿，敬请期待第一篇文章。"}</p>}
       </section>
       <aside className="sidebar">
+        <section className="portfolio-card"><div className="portfolio-heading"><div><p className="portfolio-kicker">LIVE PORTFOLIO</p><h2>我的持仓</h2></div><span className="live-dot">● 实时</span></div>{holdings.length ? <><div className="portfolio-total">{holdings.reduce((sum, item) => sum + (item.value_usd || 0), 0).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 })}</div><div className="holding-list">{holdings.slice(0, 6).map(item => <div className="holding-row" key={item.id}><strong>{item.asset}</strong><span>{item.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}</span><b>{item.value_usd == null ? "—" : item.value_usd.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 })}</b></div>)}</div><small className="portfolio-updated">更新于 {holdingsUpdated ? new Date(holdingsUpdated).toLocaleString("zh-CN") : "—"}</small></> : <p className="portfolio-empty">持仓数据将在配置并同步后显示。</p>}</section>
         <section className="profile" id="about"><div className="profile-cover"><Image src="/个人封面.jpg" alt="云雾中的群山" fill sizes="350px"/></div><div className="profile-info"><Image className="avatar" src="/头像.jpg" alt="NILING_DUSK 的头像" width={66} height={66}/><h2>NILING_DUSK</h2><p>Stop-losses keep you in the game; take-profits decide how you win it.。</p><div className="profile-signature"><span className="signature-dot"/>向内求索</div></div></section>
         <section className="popular"><h2>最新发布</h2>{posts.slice(0, 4).map((post, index) => <button className="popular-item" key={post.id} onClick={() => setSelected(post)}><span className="rank">{index + 1}</span><span className="popular-image"><Image src={post.image} alt="" fill sizes="60px" unoptimized/></span><span className="popular-text">{post.title}<span className="stats">{post.date}</span></span></button>)}</section>
         <section className="subscribe"><div className="subscribe-title"><Icon name="send"/><div><h2>订阅我的博客</h2><p>获取最新文章、市场观点与技术分享</p></div></div><form onSubmit={e => {e.preventDefault();setMessage("感谢关注！邮件订阅服务即将开放。");}}><input type="email" required value={email} onChange={e => setEmail(e.target.value)} aria-label="订阅邮箱" placeholder="请输入你的邮箱"/><button type="submit">订阅</button></form>{message && <p className="subscribe-message" role="status">{message}</p>}</section>
