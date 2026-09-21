@@ -80,6 +80,9 @@ create table if not exists public.portfolio_holdings (
   synced_at timestamptz not null default now(),
   unique (owner_id, source, account, asset)
 );
+alter table public.portfolio_holdings add column if not exists entry_price_usd numeric check (entry_price_usd is null or entry_price_usd >= 0);
+alter table public.portfolio_holdings add column if not exists mark_price_usd numeric check (mark_price_usd is null or mark_price_usd >= 0);
+alter table public.portfolio_holdings add column if not exists leverage numeric check (leverage is null or leverage > 0);
 alter table public.portfolio_holdings enable row level security;
 revoke all on public.portfolio_holdings from anon, authenticated;
 grant select on public.portfolio_holdings to anon, authenticated;
