@@ -10,7 +10,7 @@ type PublicPost = {
   id: string; title: string; category: string; date: string; text: string;
   image: string; time: number; content: string;
 };
-type Holding = { id: string; asset: string; amount: number; value_usd: number | null; entry_price_usd: number | null; mark_price_usd: number | null; leverage: number | null; source: string; account: string; synced_at: string };
+type Holding = { id: string; asset: string; amount: number; value_usd: number | null; entry_price_usd: number | null; mark_price_usd: number | null; direction: "long" | "short"; source: string; account: string; synced_at: string };
 type Ticker = { contract: string; last: number; changePercentage: number; fundingRate: number; updatedAt: string };
 const categories = ["最新文章", "加密货币", "美股", "软件工程", "生活随笔"];
 
@@ -25,6 +25,7 @@ export default function Home() {
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [holdingsUpdated, setHoldingsUpdated] = useState<string | null>(null);
   const [portfolioOpen, setPortfolioOpen] = useState(false);
+  const [liveMarks, setLiveMarks] = useState<Record<string, number>>({});
   const [tickers, setTickers] = useState<Ticker[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -74,6 +75,12 @@ export default function Home() {
       .then(rows => { if (Array.isArray(rows)) { setHoldings(rows); setHoldingsUpdated(rows[0]?.synced_at ?? null); } })
       .catch(() => undefined);
   }, [reload]);
+  useEffect(() => {
+    if (!portfolioOpen || !holdings.length) return;
+    let alive = true;
+    const refresh = async () => { try { const symbols = holdings.map(item => item.asset).join(","); const response = await fetch(`/api/gate/tickers?symbols=${encodeURIComponent(symbols)}`, { cache: "no-store" }); const data = await response.json(); if (alive && response.ok && Array.isArray(data)) setLiveMarks(Object.fromEntries(data.map((item: { contract: string; last: number }) => [item.contract.split("_")[0], item.last]))); } catch { /* 保留上次实时价格 */ } };
+    void refresh(); const timer = window.setInterval(refresh, 15_000); return () => { alive = false; clearInterval(timer); };
+  }, [portfolioOpen, holdings]);
   const [category, setCategory] = useState("最新文章");
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -116,6 +123,6 @@ export default function Home() {
     </main>
     <footer className="footer"><div className="container footer-inner"><a className="brand" href="#home"><span className="logo" aria-hidden="true"><i/><i/><i/></span>NILING_DUSK</a><span className="footer-tagline">Better Ideas. Higher Compound.</span><nav aria-label="页脚导航"><a href="#home">首页</a><a href="#articles">文章</a><a href="#categories">分类</a><a href="#about">关于我</a></nav><span className="copyright">© 2026 NILING_DUSK</span></div></footer>
     {selected && <div className="modal-backdrop" onClick={() => setSelected(null)}><section className="article-modal" role="dialog" aria-modal="true" aria-label={selected.title} onClick={e => e.stopPropagation()} onKeyDown={e => {if(e.key === "Escape") setSelected(null);}}><button autoFocus className="modal-close" aria-label="关闭文章" onClick={() => setSelected(null)}>×</button><span className="badge">{selected.category}</span><h2>{selected.title}</h2><p className="modal-byline">NILING_DUSK · {selected.date} · {selected.time} 分钟阅读</p><div className="public-prose"><ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>{selected.content}</ReactMarkdown></div></section></div>}
-    {portfolioOpen && <div className="modal-backdrop" onClick={() => setPortfolioOpen(false)}><section className="portfolio-modal" role="dialog" aria-modal="true" aria-label="持仓详情" onClick={e => e.stopPropagation()}><button autoFocus className="modal-close" aria-label="关闭持仓详情" onClick={() => setPortfolioOpen(false)}>×</button><div className="portfolio-modal-head"><div><p className="portfolio-kicker">LIVE PORTFOLIO</p><h2>持仓详情</h2></div><span className="live-dot">● 实时价格</span></div>{holdings.length ? <div className="portfolio-detail-list">{holdings.map(item => <div className="portfolio-detail" key={item.id}><div className="portfolio-detail-title"><strong>{item.asset}</strong><span>{item.source === "gate" ? `Gate · ${item.account}` : "手动持仓"}</span></div><div className="portfolio-metrics"><div><small>持仓数量</small><b>{item.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}</b></div><div><small>开仓均价</small><b>{item.entry_price_usd == null ? "—" : `$${item.entry_price_usd.toLocaleString(undefined, { maximumFractionDigits: 4 })}`}</b></div><div><small>标记价格</small><b>{item.mark_price_usd == null ? (item.value_usd == null ? "—" : `$${item.value_usd.toLocaleString(undefined, { maximumFractionDigits: 4 })}`) : `$${item.mark_price_usd.toLocaleString(undefined, { maximumFractionDigits: 4 })}`}</b></div><div><small>杠杆倍数</small><b>{item.leverage == null ? "—" : `${item.leverage}x`}</b></div></div></div>)}</div> : <p className="portfolio-empty">暂无公开持仓。</p>}<small className="portfolio-updated">最后同步：{holdingsUpdated ? new Date(holdingsUpdated).toLocaleString("zh-CN") : "—"}</small></section></div>}
+    {portfolioOpen && <div className="modal-backdrop" onClick={() => setPortfolioOpen(false)}><section className="portfolio-modal" role="dialog" aria-modal="true" aria-label="持仓详情" onClick={e => e.stopPropagation()}><button autoFocus className="modal-close" aria-label="关闭持仓详情" onClick={() => setPortfolioOpen(false)}>×</button><div className="portfolio-modal-head"><div><p className="portfolio-kicker">LIVE PORTFOLIO</p><h2>持仓详情</h2></div><span className="live-dot">● 实时价格 · 15 秒刷新</span></div>{holdings.length ? <div className="portfolio-detail-list">{holdings.map(item => <div className="portfolio-detail" key={item.id}><div className="portfolio-detail-title"><strong>{item.asset} <span className={item.direction === "short" ? "direction-short" : "direction-long"}>{item.direction === "short" ? "空仓" : "多仓"}</span></strong><span>{item.source === "gate" ? `Gate · ${item.account}` : "手动持仓"}</span></div><div className="portfolio-metrics"><div><small>持仓数量</small><b>{item.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}</b></div><div><small>开仓均价</small><b>{item.entry_price_usd == null ? "—" : `$${item.entry_price_usd.toLocaleString(undefined, { maximumFractionDigits: 4 })}`}</b></div><div><small>标记价格（实时）</small><b>{liveMarks[item.asset] == null ? "加载中…" : `$${liveMarks[item.asset].toLocaleString(undefined, { maximumFractionDigits: 4 })}`}</b></div></div></div>)}</div> : <p className="portfolio-empty">暂无公开持仓。</p>}<small className="portfolio-updated">最后同步：{holdingsUpdated ? new Date(holdingsUpdated).toLocaleString("zh-CN") : "—"}</small></section></div>}
   </div>;
 }

@@ -1,8 +1,9 @@
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   const settle = (process.env.GATE_SETTLE || "usdt").toLowerCase();
-  const contracts = ["BTC_USDT", "ETH_USDT"];
+  const requested = new URL(request.url).searchParams.get("symbols")?.split(",").map(value => value.trim().toUpperCase()).filter(value => /^[A-Z0-9]{2,20}$/.test(value)).slice(0, 20) || [];
+  const contracts = (requested.length ? requested : ["BTC", "ETH"]).map(asset => `${asset}_USDT`);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
