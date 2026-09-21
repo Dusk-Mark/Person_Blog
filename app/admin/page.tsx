@@ -75,9 +75,11 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (!db) {
-      setAccess("denied");
-      setNotice("部署环境缺少 Supabase 配置。请在 Vercel Environment Variables 中添加 NEXT_PUBLIC_SUPABASE_URL 和 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY，然后重新部署。");
-      return;
+      const timer = window.setTimeout(() => {
+        setAccess("denied");
+        setNotice("部署环境缺少 Supabase 配置。请在 Vercel Environment Variables 中添加 NEXT_PUBLIC_SUPABASE_URL 和 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY，然后重新部署。");
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
     const database = db;
     let alive = true;

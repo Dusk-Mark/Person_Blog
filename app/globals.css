@@ -57,6 +57,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .stats span { display: flex; align-items: center; gap: 5px; }
 .stats svg { width: 12px; height: 12px; }
 .sidebar { border-left: 1px solid var(--line); padding-left: 23px; }
+.portfolio-card{background:linear-gradient(145deg,#0b2230,#07131f);color:#eef8f7;border-radius:7px;padding:18px;margin-bottom:18px}.portfolio-heading{display:flex;align-items:flex-start;justify-content:space-between}.portfolio-kicker{font-size:9px;letter-spacing:2px;color:#45d9c0;margin:0 0 7px}.portfolio-heading h2{font-size:16px;margin:0}.live-dot{font-size:10px;color:#6ee7d0}.portfolio-total{font-size:25px;font-weight:700;margin:18px 0 14px}.holding-list{border-top:1px solid #ffffff1f}.holding-row{display:grid;grid-template-columns:1fr 1.2fr auto;gap:7px;padding:9px 0;border-bottom:1px solid #ffffff14;font-size:11px;align-items:center}.holding-row span{color:#b8cbd0}.holding-row b{font-size:10px;font-weight:500}.portfolio-updated{display:block;color:#8ba6ae;font-size:9px;margin-top:12px}.portfolio-empty{color:#a5bbc2;font-size:12px;line-height:1.7;margin:20px 0 4px}
 .profile { border-radius: 5px; overflow: hidden; background: var(--card); box-shadow: 0 6px 24px #22354a03; }
 .profile-cover { height: 88px; position: relative; }
 .profile-cover img { object-fit: cover; object-position: center 44%; }

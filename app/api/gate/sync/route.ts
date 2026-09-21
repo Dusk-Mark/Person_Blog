@@ -30,9 +30,19 @@ export async function POST(request: Request) {
   const gateResponse = await fetch(`https://api.gateio.ws${path}`, { headers: { Accept: "application/json", KEY: gateKey, Timestamp: timestamp, SIGN: signature }, cache: "no-store" });
   const payload = await gateResponse.json() as unknown;
   if (!gateResponse.ok || !Array.isArray(payload)) return Response.json({ error: "Gate API 请求失败，请检查只读权限、IP 白名单和密钥。", detail: payload }, { status: 502 });
-  const rows = payload.filter((item): item is { currency: string; available: string; locked: string } => Boolean(item && typeof item === "object" && "currency" in item && "available" in item && "locked" in item)).map(item => ({
-    owner_id: userData.user.id, source: "gate", account: "spot", asset: item.currency.toUpperCase(), amount: Number(item.available) + Number(item.locked), is_public: true, synced_at: new Date().toISOString(),
-  })).filter(item => Number.isFinite(item.amount) && item.amount > 0);
+  const accounts = payload.filter((item): item is { currency: string; available: string; locked: string } => Boolean(item && typeof item === "object" && "currency" in item && "available" in item && "locked" in item)).map(item => ({ asset: item.currency.toUpperCase(), amount: Number(item.available) + Number(item.locked) })).filter(item => Number.isFinite(item.amount) && item.amount > 0);
+  const pricePairs = [...new Set(accounts.map(item => item.asset).filter(asset => asset !== "USDT"))];
+  const prices = new Map<string, number>([["USDT", 1]]);
+  await Promise.all(pricePairs.map(async asset => {
+    try {
+      const ticker = await fetch(`https://api.gateio.ws/api/v4/spot/tickers?currency_pair=${asset}_USDT`, { cache: "no-store" });
+      const data = await ticker.json() as unknown;
+      if (Array.isArray(data) && typeof data[0]?.last === "string") prices.set(asset, Number(data[0].last));
+    } catch { /* 价格不可用时仍保留数量 */ }
+  }));
+  const syncedAt = new Date().toISOString();
+  const rows = accounts.map(item => ({ owner_id: userData.user.id, source: "gate", account: "spot", asset: item.asset, amount: item.amount, price_usd: prices.get(item.asset) ?? null, is_public: true, synced_at: syncedAt }));
+  await db.from("portfolio_holdings").delete().eq("owner_id", userData.user.id).eq("source", "gate");
   const { error: saveError } = await db.from("portfolio_holdings").upsert(rows, { onConflict: "owner_id,source,account,asset" });
   if (saveError) return Response.json({ error: "持仓写入失败，请确认已执行最新 data.sql。", detail: saveError.message }, { status: 500 });
   return Response.json({ count: rows.length, syncedAt: new Date().toISOString() });
