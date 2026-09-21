@@ -70,7 +70,7 @@ export default function Home() {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
     if (!url || !key) return;
-    fetch(url + "/rest/v1/portfolio_holdings?select=id,asset,amount,value_usd,entry_price_usd,mark_price_usd,leverage,source,account,synced_at&is_public=eq.true&order=value_usd.desc.nullslast", { headers: { apikey: key }, cache: "no-store" })
+    fetch(url + "/rest/v1/portfolio_holdings?select=id,asset,amount,value_usd,entry_price_usd,mark_price_usd,direction,source,account,synced_at&is_public=eq.true&order=value_usd.desc.nullslast", { headers: { apikey: key }, cache: "no-store" })
       .then(response => response.ok ? response.json() : [])
       .then(rows => { if (Array.isArray(rows)) { setHoldings(rows); setHoldingsUpdated(rows[0]?.synced_at ?? null); } })
       .catch(() => undefined);

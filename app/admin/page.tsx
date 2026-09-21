@@ -239,7 +239,7 @@ export default function AdminPage() {
     const response = await fetch("/api/gate/sync", { method: "POST", headers: { Authorization: `Bearer ${data.session?.access_token || ""}` } });
     const result = await response.json() as { error?: string; count?: number };
     if (!response.ok) setHoldingNotice(result.error || "Gate 同步失败。");
-    else { setHoldingNotice(`Gate 已同步 ${result.count ?? 0} 项资产。`); const refreshed = await db.from("portfolio_holdings").select("*").order("value_usd", { ascending: false, nullsFirst: false }); if (!refreshed.error) setHoldings(refreshed.data as Holding[]); }
+    else { setHoldingNotice(`Gate 已同步 ${result.count ?? 0} 项资产：${(result as { assets?: string[] }).assets?.join("、") || "—"}`); const refreshed = await db.from("portfolio_holdings").select("*").order("value_usd", { ascending: false, nullsFirst: false }); if (!refreshed.error) setHoldings(refreshed.data as Holding[]); }
     setHoldingBusy(false);
   }
   async function addManualHolding(event: React.FormEvent) {
