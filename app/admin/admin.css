@@ -13,6 +13,9 @@
 .admin-shell .admin-primary{background:#12b89d;color:#032c25;border-color:#12b89d;padding:10px 22px;font-weight:700}
 .admin-login .admin-primary{width:100%;margin-top:8px}.admin-help{font-size:11px!important;line-height:1.8;color:#7c8d9c;margin-top:24px}
 .admin-notice{padding:12px 15px;background:#e6f5f1;border:1px solid #bfdfd6;color:#235e50!important;line-height:1.7;font-size:12px;border-radius:6px;margin:18px 0;overflow-wrap:anywhere}
+.admin-recovery{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:12px 15px;background:#fff8e8;border:1px solid #f0dca6;border-radius:6px;margin:18px 0}
+.admin-recovery strong{font-size:12px;color:#8a6412}.admin-recovery p{margin:4px 0 0;font-size:11px;line-height:1.7;color:#9a7b34}
+.admin-recovery-actions{display:flex;gap:8px;flex-shrink:0}
 .admin-workspace{display:grid;grid-template-columns:270px minmax(0,1fr);max-width:1500px;margin:30px auto;padding:0 30px;gap:26px}
 .admin-list{align-self:start;background:white;border:1px solid #e0e7ed;border-radius:9px;padding:20px;position:sticky;top:25px}
 .admin-list-title{display:flex;align-items:center;justify-content:space-between;margin-bottom:19px}.admin-list h1{font-size:16px;font-weight:700}.admin-list input{font-size:12px}

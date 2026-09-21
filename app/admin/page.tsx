@@ -17,6 +17,10 @@ const emptyPost = (): Draft => ({
   title: "", slug: "", excerpt: "", category: "软件工程",
   content: "", cover_url: "", status: "draft",
 });
+// 未保存内容的本地自动缓存：浏览器意外关闭后仍可恢复，不写入数据库。
+const AUTOSAVE_KEY = "nilingdusk:autosave";
+type Autosave = { draft: Draft; savedAt: number };
+function clearAutosave() { try { localStorage.removeItem(AUTOSAVE_KEY); } catch { /* 忽略隐私模式等异常 */ } }
 const mimeExtensions: Record<string, string> = {
   "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif",
 };
@@ -45,6 +49,7 @@ export default function AdminPage() {
   const [filter, setFilter] = useState("");
   const [preview, setPreview] = useState(true);
   const [showHint, setShowHint] = useState(false);
+  const [recovery, setRecovery] = useState<Autosave | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   function insertSyntax(before: string, after: string, placeholder: string) {
@@ -56,7 +61,7 @@ export default function AdminPage() {
     const next = draft.content.slice(0, start) + before + selected + after + draft.content.slice(end);
     if (next.length > 200000) return; // respect maxLength
     setDraft(previous => ({ ...previous, content: next }));
-    setDirty(true);
+    setDirty(true); setRecovery(null);
     requestAnimationFrame(() => {
       textarea.focus();
       textarea.setSelectionRange(start + before.length, start + before.length + selected.length);
@@ -85,6 +90,14 @@ export default function AdminPage() {
       const result = await database.from("blog_posts").select("*").order("updated_at", { ascending: false });
       if (!alive) return;
       setAccess("admin");
+      // 检测上次未保存的本地草稿，提示恢复。
+      try {
+        const raw = localStorage.getItem(AUTOSAVE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as Autosave;
+          if (parsed?.draft && (parsed.draft.title.trim() || parsed.draft.content.trim())) setRecovery(parsed);
+        }
+      } catch { /* 忽略损坏的缓存 */ }
       if (result.error) setNotice(errorMessage(result.error));
       else { setPosts(result.data as Post[]); setNotice(""); }
     }
@@ -107,11 +120,30 @@ export default function AdminPage() {
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
 
+  // 内容变化后防抖写入本地缓存，浏览器意外关闭后仍可恢复；不写入数据库。
+  useEffect(() => {
+    if (access !== "admin" || !dirty) return;
+    const timer = window.setTimeout(() => {
+      try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({ draft, savedAt: Date.now() })); } catch { /* 忽略存储异常 */ }
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [draft, dirty, access]);
+
+  function restoreAutosave() {
+    if (!recovery) return;
+    setDraft(recovery.draft); setDirty(true); setRecovery(null);
+    setNotice("已恢复上次未保存的草稿，请确认内容后保存。");
+  }
+  function discardAutosave() {
+    clearAutosave(); setRecovery(null); setNotice("");
+  }
+
   function edit<K extends keyof Draft>(key: K, value: Draft[K]) {
-    setDraft(previous => ({ ...previous, [key]: value })); setDirty(true);
+    setDraft(previous => ({ ...previous, [key]: value })); setDirty(true); setRecovery(null);
   }
   function choose(post?: Post) {
     if (dirty && !window.confirm("当前修改尚未保存，是否放弃修改？")) return;
+    clearAutosave(); setRecovery(null);
     setDraft(post ? { ...post } : emptyPost()); setDirty(false); setNotice("");
   }
   function leaveEditor(event: React.MouseEvent<HTMLAnchorElement>) {
@@ -155,7 +187,7 @@ export default function AdminPage() {
       if (error) { setNotice(errorMessage(error)); return; }
       const saved = data as Post;
       setPosts(previous => [saved, ...previous.filter(p => p.id !== saved.id)]);
-      setDraft(saved); setDirty(false); setNotice("文章已保存。已发布文章将展示在公开博客中，草稿仅管理员可见。");
+      setDraft(saved); setDirty(false); clearAutosave(); setNotice("文章已保存。已发布文章将展示在公开博客中，草稿仅管理员可见。");
     } catch { setNotice("保存失败，请检查网络后重试。"); }
     finally { setBusy(false); }
   }
@@ -170,7 +202,7 @@ export default function AdminPage() {
       if (error) { setNotice(errorMessage(error)); return; }
       if (!data.length) { setNotice("删除未生效，请刷新并检查权限。"); return; }
       setPosts(previous => previous.filter(p => p.id !== draft.id));
-      setDraft(emptyPost()); setDirty(false); setNotice("文章已删除。封面文件保留在图床中。");
+      setDraft(emptyPost()); setDirty(false); clearAutosave(); setNotice("文章已删除。封面文件保留在图床中。");
     } catch { setNotice("删除失败，请检查网络后重试。"); }
     finally { setBusy(false); }
   }
@@ -214,6 +246,10 @@ export default function AdminPage() {
         </aside>
         <section className="admin-editor"><div className="admin-editor-heading"><div><p className="admin-kicker">WRITE · THINK · BUILD</p><h2>{draft.id ? "编辑文章" : "新的创作"}{dirty && <span> · 未保存</span>}</h2></div></div>
           {notice && <p className="admin-notice" role="status">{notice}</p>}
+          {recovery && <div className="admin-recovery" role="alert">
+            <div><strong>检测到上次未保存的草稿</strong><p>保存于 {new Date(recovery.savedAt).toLocaleString("zh-CN", { hour12: false })}，可能因浏览器意外关闭而中断。恢复后可继续编辑并保存。</p></div>
+            <div className="admin-recovery-actions"><button type="button" disabled={busy} onClick={restoreAutosave}>恢复草稿</button><button type="button" disabled={busy} onClick={discardAutosave}>丢弃</button></div>
+          </div>}
           <form onSubmit={save}><fieldset disabled={busy}>
             <label>文章标题<input required maxLength={200} value={draft.title} onChange={e => edit("title", e.target.value)} placeholder="为你的思考起一个标题"/></label>
             <div className="admin-fields"><label>文章路径<input required pattern="[a-z0-9]+(-[a-z0-9]+)*" title="小写英文字母、数字与中划线，例如 my-first-post" value={draft.slug} onChange={e => edit("slug", e.target.value)} placeholder="my-first-post"/></label><label>分类<select value={draft.category} onChange={e => edit("category", e.target.value)}>{["加密货币","美股","软件工程","生活随笔"].map(c => <option key={c}>{c}</option>)}</select></label><label>状态<select value={draft.status} onChange={e => edit("status", e.target.value as Draft["status"])}><option value="draft">草稿</option><option value="published">已发布（公开可见）</option></select></label></div>
