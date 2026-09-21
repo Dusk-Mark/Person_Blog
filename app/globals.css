@@ -36,6 +36,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .hero-tags { display: flex; gap: 10px; margin-top: 19px; }
 .hero-tags a { font-size: 11px; color: #c5d3de; border: 1px solid #ffffff20; border-radius: 30px; padding: 5px 15px; transition: .2s; }
 .hero-tags a:hover { border-color: #1dc8af; color: #1de2c5; background: #10bfa912; }
+.gate-tickers{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}.gate-ticker{display:grid;grid-template-columns:auto auto auto;align-items:center;gap:9px;padding:8px 11px;background:#071a29b5;border:1px solid #ffffff20;border-radius:6px;backdrop-filter:blur(5px);font-size:10px}.gate-ticker b{font-size:9px;letter-spacing:.7px;color:#8ed9d0}.gate-ticker strong{font-size:12px;color:#fff}.gate-ticker em{font-style:normal}.gate-ticker .up{color:#32d8a2}.gate-ticker .down{color:#ff7d89}
 .content { display: grid; grid-template-columns: minmax(0, 1fr) 335px; gap: 32px; padding-block: 32px 22px; }
 .tabs { display: flex; gap: 29px; border-bottom: 1px solid var(--line); height: 38px; }
 .tabs button { border: 0; background: none; color: var(--muted); padding: 0 0 15px; font-size: 13px; position: relative; white-space: nowrap; }

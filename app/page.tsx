@@ -11,6 +11,7 @@ type PublicPost = {
   image: string; time: number; content: string;
 };
 type Holding = { id: string; asset: string; amount: number; value_usd: number | null; source: string; synced_at: string };
+type Ticker = { contract: string; last: number; changePercentage: number; fundingRate: number; updatedAt: string };
 const categories = ["最新文章", "加密货币", "美股", "软件工程", "生活随笔"];
 
 function Icon({ name }: { name: string }) {
@@ -23,6 +24,7 @@ export default function Home() {
   const [posts, setPosts] = useState<PublicPost[]>([]);
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [holdingsUpdated, setHoldingsUpdated] = useState<string | null>(null);
+  const [tickers, setTickers] = useState<Ticker[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [reload, setReload] = useState(0);
@@ -58,6 +60,11 @@ export default function Home() {
     return () => controller.abort();
   }, [reload]);
   useEffect(() => {
+    let alive = true;
+    async function refresh() { try { const response = await fetch("/api/gate/tickers", { cache: "no-store" }); const data = await response.json(); if (alive && response.ok && Array.isArray(data)) setTickers(data); } catch { /* 行情标签失败时不影响博客 */ } }
+    void refresh(); const timer = window.setInterval(refresh, 15_000); return () => { alive = false; clearInterval(timer); };
+  }, []);
+  useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
     if (!url || !key) return;
@@ -85,7 +92,7 @@ export default function Home() {
     <section className="hero">
       <Image className="hero-image" src="/首页顶部图片.png" alt="加密货币、股票行情与代码组成的工作空间" fill sizes="100vw" preload/>
       <div className="hero-overlay"/>
-      <div className="container hero-content"><p className="eyebrow">BETTER IDEAS. HIGHER COMPOUND.</p><h1>在加密、美股与技术的交汇处<br/>记录思考与成长</h1><p className="hero-description">我是 NILING_DUSK，一名热爱技术与金融的探索者。<br/>在这里，分享关于加密货币、美股投资与软件工程的学习、研究与思考。</p><div className="hero-tags">{categories.slice(1).map(c => <a href="#articles" key={c} onClick={() => setCategory(c)}>{c === "美股" ? "美股投资" : c}</a>)}</div></div>
+      <div className="container hero-content"><p className="eyebrow">BETTER IDEAS. HIGHER COMPOUND.</p><h1>在加密、美股与技术的交汇处<br/>记录思考与成长</h1><p className="hero-description">我是 NILING_DUSK，一名热爱技术与金融的探索者。<br/>在这里，分享关于加密货币、美股投资与软件工程的学习、研究与思考。</p><div className="hero-tags">{categories.slice(1).map(c => <a href="#articles" key={c} onClick={() => setCategory(c)}>{c === "美股" ? "美股投资" : c}</a>)}</div><div className="gate-tickers" aria-label="Gate 永续合约实时行情">{tickers.map(ticker => <span className="gate-ticker" key={ticker.contract}><b>GATE · {ticker.contract.replace("_USDT", "")}</b><strong>${ticker.last.toLocaleString("en-US", { maximumFractionDigits: 2 })}</strong><em className={ticker.changePercentage >= 0 ? "up" : "down"}>{ticker.changePercentage >= 0 ? "+" : ""}{ticker.changePercentage.toFixed(2)}%</em></span>)}</div></div>
     </section>
     <main className="container content" id="articles">
       <section className="feed" aria-label="文章列表">
