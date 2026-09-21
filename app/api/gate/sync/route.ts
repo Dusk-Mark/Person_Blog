@@ -25,14 +25,16 @@ export async function POST(request: Request) {
   if (adminError || !admin) return Response.json({ error: "没有管理员权限。" }, { status: 403 });
   const settle = (process.env.GATE_SETTLE || "usdt").toLowerCase();
   const path = `/api/v4/futures/${settle}/positions`;
-  const query = "";
+  // Gate 该接口默认会连带返回大量 size 为 0 的合约条目，且省略 holding/limit 时只返回部分条目，
+  // 会导致真实仓位被截断，因此显式只取有仓位的合约并放开条数上限（limit 上限为 100）。
+  const query = "holding=true&limit=100";
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const signature = gateSignature("GET", path, query, "", gateSecret, timestamp);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12_000);
   let gateResponse: Response;
   try {
-    gateResponse = await fetch(`https://api.gateio.ws${path}`, { headers: { Accept: "application/json", KEY: gateKey, Timestamp: timestamp, SIGN: signature }, cache: "no-store", signal: controller.signal });
+    gateResponse = await fetch(`https://api.gateio.ws${path}?${query}`, { headers: { Accept: "application/json", KEY: gateKey, Timestamp: timestamp, SIGN: signature }, cache: "no-store", signal: controller.signal });
   } catch { return Response.json({ error: "Gate 合约接口超时，请检查 Vercel 出口网络、API IP 白名单和合约权限。" }, { status: 504 }); }
   finally { clearTimeout(timeout); }
   const payload = await gateResponse.json() as unknown;
