@@ -525,6 +525,128 @@ input:focus-visible {
 .portfolio-modal .portfolio-updated {
   color: var(--muted);
 }
+/* ===== 持仓弹窗搜索与 1s 实时行情展示卡片 ===== */
+.portfolio-search-bar {
+  margin: 16px 0 20px;
+}
+.portfolio-search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.portfolio-search-input-wrapper:focus-within {
+  border-color: #36d8bd;
+  box-shadow: 0 0 0 3px rgba(54, 216, 189, 0.15);
+}
+.portfolio-search-input-wrapper svg {
+  color: var(--muted);
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+.portfolio-search-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+}
+.portfolio-search-input::placeholder {
+  color: var(--muted);
+  font-weight: 400;
+}
+.search-clear-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 50%;
+  transition: color 0.2s, background-color 0.2s;
+}
+.search-clear-btn:hover {
+  color: var(--text);
+  background: var(--line);
+}
+.portfolio-search-result-card {
+  background: linear-gradient(135deg, rgba(54, 216, 189, 0.08), rgba(19, 157, 127, 0.04));
+  border: 1px solid rgba(54, 216, 189, 0.3);
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+.search-result-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.search-result-head strong {
+  font-size: 18px;
+  color: var(--text);
+}
+.search-result-badge {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(54, 216, 189, 0.15);
+  color: #139d7f;
+  font-weight: 600;
+}
+.search-result-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.search-result-item {
+  background: var(--card);
+  padding: 10px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+.search-result-item small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.search-result-item b {
+  font-size: 16px;
+}
+.search-result-item b.up {
+  color: #139d7f;
+}
+.search-result-item b.down {
+  color: #d65d6d;
+}
+.live-dot-pulse {
+  color: #139d7f;
+  font-size: 11px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.live-dot-pulse::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  background-color: #139d7f;
+  border-radius: 50%;
+  animation: pulse-dot 1s infinite alternate;
+}
+@keyframes pulse-dot {
+  0% { opacity: 0.4; transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1.2); }
+}
 .asset-heading {
   display: flex;
   align-items: center;

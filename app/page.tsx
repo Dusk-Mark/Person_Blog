@@ -32,6 +32,12 @@ type Ticker = {
   fundingRate: number;
   updatedAt: string;
 };
+type TickerInfo = {
+  last: number;
+  changePercentage: number;
+  fundingRate: number;
+};
+type TickerMap = Record<string, TickerInfo>;
 const categories = ["最新文章", "加密货币", "美股", "软件工程", "生活随笔"];
 
 function Icon({ name }: { name: string }) {
@@ -158,18 +164,34 @@ function PortfolioCard({
   );
 }
 
-/** 持仓详情弹窗：逐项展示入场价、杠杆、实时价与当前收益率。 */
+/** 持仓详情弹窗：支持搜索品种显示 1s 实时行情，逐项展示入场价、杠杆、实时价与当前收益率。 */
 function PortfolioModal({
   holdings,
   marks,
+  tickerMap,
+  searchedSymbol,
+  onSearchChange,
   updatedAt,
   onClose,
 }: {
   holdings: Holding[];
   marks: LiveMarks;
+  tickerMap: TickerMap;
+  searchedSymbol: string;
+  onSearchChange: (symbol: string) => void;
   updatedAt: string | null;
   onClose: () => void;
 }) {
+  const cleanSearch = searchedSymbol.trim().toUpperCase();
+  const searchTicker = cleanSearch ? tickerMap[cleanSearch] : null;
+  const isSearchValid = /^[A-Z0-9]{2,20}$/.test(cleanSearch);
+
+  const filteredHoldings = holdings.filter((item) =>
+    cleanSearch ? item.asset.includes(cleanSearch) : true,
+  );
+
+  const isInHolding = holdings.some((item) => item.asset === cleanSearch);
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <section
@@ -190,13 +212,85 @@ function PortfolioModal({
         <div className="portfolio-modal-head">
           <div>
             <p className="portfolio-kicker">LIVE PORTFOLIO</p>
-            <h2>持仓详情</h2>
+            <h2>持仓详情与行情搜索</h2>
           </div>
-          <span className="live-dot">● 实时价格 · 15 秒刷新</span>
+          <span className="live-dot">● 实时价格 · 1 秒刷新</span>
         </div>
-        {holdings.length ? (
+
+        {/* 品种搜索输入框 */}
+        <div className="portfolio-search-bar">
+          <div className="portfolio-search-input-wrapper">
+            <Icon name="search" />
+            <input
+              type="text"
+              placeholder="搜索持仓或输入品种代码（如 SOL, DOGE, BTC, ETH）查看 1s 实时价格..."
+              value={searchedSymbol}
+              onChange={(e) => onSearchChange(e.target.value.toUpperCase().trim())}
+              className="portfolio-search-input"
+            />
+            {searchedSymbol && (
+              <button
+                className="search-clear-btn"
+                onClick={() => onSearchChange("")}
+                title="清空搜索"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 搜索品种的 1s 实时行情卡片 */}
+        {cleanSearch && isSearchValid && (
+          <div className="portfolio-search-result-card">
+            <div className="search-result-head">
+              <div>
+                <strong>{cleanSearch} / USDT 永续合约</strong>
+                <span className="search-result-badge" style={{ marginLeft: 10 }}>
+                  {isInHolding ? "已在持仓中" : "行情查询品种"}
+                </span>
+              </div>
+              <span className="live-dot-pulse">1s 实时刷新中</span>
+            </div>
+            {searchTicker ? (
+              <div className="search-result-grid">
+                <div className="search-result-item">
+                  <small>实时最新价 (USD)</small>
+                  <b>
+                    $
+                    {searchTicker.last.toLocaleString(undefined, {
+                      maximumFractionDigits: 6,
+                    })}
+                  </b>
+                </div>
+                <div className="search-result-item">
+                  <small>24H 涨跌幅</small>
+                  <b
+                    className={
+                      searchTicker.changePercentage >= 0 ? "up" : "down"
+                    }
+                  >
+                    {searchTicker.changePercentage >= 0 ? "+" : ""}
+                    {searchTicker.changePercentage.toFixed(2)}%
+                  </b>
+                </div>
+                <div className="search-result-item">
+                  <small>资金费率</small>
+                  <b>{(searchTicker.fundingRate * 100).toFixed(4)}%</b>
+                </div>
+              </div>
+            ) : (
+              <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--muted)" }}>
+                正在查询 {cleanSearch} 的 1s 实时价格...
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* 持仓列表 */}
+        {filteredHoldings.length ? (
           <div className="portfolio-detail-list">
-            {holdings.map((item) => {
+            {filteredHoldings.map((item) => {
               const direction = item.direction === "short" ? "short" : "long";
               const mark = markPrice(item, marks);
               const value = marketValue(item, marks);
@@ -244,7 +338,7 @@ function PortfolioModal({
                       </b>
                     </div>
                     <div>
-                      <small>实时价格</small>
+                      <small>实时价格 (1s)</small>
                       <b>
                         {mark == null
                           ? "加载中…"
@@ -272,6 +366,8 @@ function PortfolioModal({
               );
             })}
           </div>
+        ) : holdings.length ? (
+          <p className="portfolio-empty">未查找到匹配资产“{searchedSymbol}”的持仓。</p>
         ) : (
           <p className="portfolio-empty">暂无公开持仓。</p>
         )}
@@ -293,6 +389,8 @@ export default function Home() {
   const [holdingsUpdated, setHoldingsUpdated] = useState<string | null>(null);
   const [liveMarks, setLiveMarks] = useState<LiveMarks>({});
   const [tickers, setTickers] = useState<Ticker[]>([]);
+  const [searchedSymbol, setSearchedSymbol] = useState("");
+  const [tickerMap, setTickerMap] = useState<TickerMap>({});
   const [portfolioOpen, setPortfolioOpen] = useState(false);
   const [category, setCategory] = useState("最新文章");
   const [search, setSearch] = useState("");
@@ -353,7 +451,7 @@ export default function Home() {
     void loadPosts();
     return () => controller.abort();
   }, [reload]);
-  // 首屏行情标签：只取默认的 BTC / ETH，15 秒刷新一次。
+  // 首屏行情标签：只取默认的 BTC / ETH，1 秒刷新一次。
   useEffect(() => {
     let alive = true;
     async function refresh() {
@@ -368,7 +466,7 @@ export default function Home() {
       }
     }
     void refresh();
-    const timer = window.setInterval(refresh, 15_000);
+    const timer = window.setInterval(refresh, 1000);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -393,38 +491,58 @@ export default function Home() {
       })
       .catch(() => undefined);
   }, [reload]);
-  // 持仓市值与总市值均按 Gate 永续合约实时价格计算，行情不可用时回退到保存时的价格。
+  // 持仓市值与搜索品种实时行情均按 1 秒 (1000ms) 轮询 Gate 永续合约实时价格。
   useEffect(() => {
-    if (!holdings.length) return;
+    const symbolSet = new Set<string>();
+    holdings.forEach((item) => symbolSet.add(item.asset));
+    if (searchedSymbol && /^[A-Z0-9]{2,20}$/.test(searchedSymbol)) {
+      symbolSet.add(searchedSymbol);
+    }
+    const symbolsList = Array.from(symbolSet);
+    if (!symbolsList.length) return;
+
     let alive = true;
     const refresh = async () => {
       try {
-        const symbols = holdings.map((item) => item.asset).join(",");
+        const symbols = symbolsList.join(",");
         const response = await fetch(
           `/api/gate/tickers?symbols=${encodeURIComponent(symbols)}`,
           { cache: "no-store" },
         );
         const data = await response.json();
-        if (alive && response.ok && Array.isArray(data))
-          setLiveMarks(
-            Object.fromEntries(
-              data.map((item: { contract: string; last: number }) => [
-                item.contract.split("_")[0],
-                item.last,
-              ]),
-            ),
+        if (alive && response.ok && Array.isArray(data)) {
+          const newMarks: LiveMarks = {};
+          const newTickerMap: TickerMap = {};
+          data.forEach(
+            (item: {
+              contract: string;
+              last: number;
+              changePercentage: number;
+              fundingRate: number;
+            }) => {
+              const asset = item.contract.split("_")[0];
+              newMarks[asset] = item.last;
+              newTickerMap[asset] = {
+                last: item.last,
+                changePercentage: item.changePercentage,
+                fundingRate: item.fundingRate,
+              };
+            },
           );
+          setLiveMarks((prev) => ({ ...prev, ...newMarks }));
+          setTickerMap((prev) => ({ ...prev, ...newTickerMap }));
+        }
       } catch {
         /* 保留上次实时价格 */
       }
     };
     void refresh();
-    const timer = window.setInterval(refresh, 15_000);
+    const timer = window.setInterval(refresh, 1000);
     return () => {
       alive = false;
       clearInterval(timer);
     };
-  }, [holdings]);
+  }, [holdings, searchedSymbol]);
 
   const filtered = posts.filter(
     (post) =>
@@ -776,6 +894,9 @@ export default function Home() {
         <PortfolioModal
           holdings={holdings}
           marks={liveMarks}
+          tickerMap={tickerMap}
+          searchedSymbol={searchedSymbol}
+          onSearchChange={setSearchedSymbol}
           updatedAt={holdingsUpdated}
           onClose={() => setPortfolioOpen(false)}
         />
