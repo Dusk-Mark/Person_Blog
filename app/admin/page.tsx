@@ -13,7 +13,13 @@ type Post = {
   status: "draft" | "published"; updated_at: string;
 };
 type Draft = Omit<Post, "id" | "updated_at"> & { id?: string };
-type Holding = { id: string; source: "gate" | "manual"; asset: string; account: string; amount: number; price_usd: number | null; direction: "long" | "short"; is_public: boolean; synced_at: string };
+type Holding = { id: string; source: "gate" | "manual"; asset: string; account: string; amount: number; price_usd: number | null; entry_price_usd: number | null; leverage: number | null; direction: "long" | "short"; is_public: boolean; synced_at: string };
+// 当前收益率：以入场价为基准的价格变化，按方向取正负，再乘杠杆得到保证金收益率。
+function holdingRoi(item: Pick<Holding, "direction" | "entry_price_usd" | "leverage">, mark: number | null) {
+  if (mark == null || !item.entry_price_usd) return null;
+  return ((mark - item.entry_price_usd) / item.entry_price_usd) * (item.leverage ?? 1) * (item.direction === "short" ? -1 : 1);
+}
+function formatRoi(roi: number | null) { return roi == null ? "—" : `${roi >= 0 ? "+" : ""}${(roi * 100).toFixed(2)}%`; }
 const emptyPost = (): Draft => ({
   title: "", slug: "", excerpt: "", category: "软件工程",
   content: "", cover_url: "", status: "draft",
@@ -50,9 +56,10 @@ export default function AdminPage() {
   const [filter, setFilter] = useState("");
   const [preview, setPreview] = useState(true);
   const [holdings, setHoldings] = useState<Holding[]>([]);
-  const [holdingForm, setHoldingForm] = useState({ asset: "", account: "spot", amount: "", direction: "long" as "long" | "short", is_public: true });
+  const [holdingForm, setHoldingForm] = useState({ asset: "", account: "spot", amount: "", entryPrice: "", leverage: "", direction: "long" as "long" | "short", is_public: true });
   const [holdingPrice, setHoldingPrice] = useState<number | null>(null);
   const [holdingPriceState, setHoldingPriceState] = useState<"idle" | "loading" | "ready" | "missing">("idle");
+  const [holdingMarks, setHoldingMarks] = useState<Record<string, number>>({});
   const [holdingBusy, setHoldingBusy] = useState(false);
   const [holdingNotice, setHoldingNotice] = useState("");
   const [showHint, setShowHint] = useState(false);
@@ -160,6 +167,22 @@ export default function AdminPage() {
     return () => { alive = false; window.clearTimeout(timer); };
   }, [holdingForm.asset]);
 
+  // 后台持仓列表同样按实时行情计算收益率，30 秒刷新一次。
+  useEffect(() => {
+    if (!holdings.length) return;
+    let alive = true;
+    const refresh = async () => {
+      try {
+        const symbols = holdings.map(item => item.asset).join(",");
+        const response = await fetch(`/api/gate/tickers?symbols=${encodeURIComponent(symbols)}`, { cache: "no-store" });
+        const data = await response.json();
+        if (alive && response.ok && Array.isArray(data)) setHoldingMarks(Object.fromEntries(data.map((item: { contract: string; last: number }) => [item.contract.split("_")[0], item.last])));
+      } catch { /* 保留上次行情 */ }
+    };
+    void refresh(); const timer = window.setInterval(refresh, 30_000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [holdings]);
+
   function restoreAutosave() {
     if (!recovery) return;
     setDraft(recovery.draft); setDirty(true); setRecovery(null);
@@ -257,11 +280,14 @@ export default function AdminPage() {
   async function addHolding(event: React.FormEvent) {
     event.preventDefault(); if (!db || !session) return;
     const asset = holdingForm.asset.trim().toUpperCase(); const amount = Number(holdingForm.amount);
+    const entryPrice = Number(holdingForm.entryPrice); const leverage = Number(holdingForm.leverage);
     if (!/^[A-Z0-9]{2,20}$/.test(asset) || !Number.isFinite(amount) || amount < 0) { setHoldingNotice("请填写合法的资产代码和数量。"); return; }
+    if (!Number.isFinite(entryPrice) || entryPrice <= 0) { setHoldingNotice("请填写大于 0 的入场价格。"); return; }
+    if (!Number.isFinite(leverage) || leverage <= 0) { setHoldingNotice("请填写大于 0 的杠杆倍数。"); return; }
     if (holdingPrice === null) { setHoldingNotice(holdingPriceState === "loading" ? "正在获取实时价格，请稍候再保存。" : `未取到 ${asset}_USDT 的永续价格，请确认 Gate 上有该永续合约。`); return; }
     setHoldingBusy(true); setHoldingNotice("");
-    const { data, error } = await db.from("portfolio_holdings").upsert({ source: "manual", asset, account: holdingForm.account || "spot", amount, price_usd: holdingPrice, direction: holdingForm.direction, is_public: holdingForm.is_public, synced_at: new Date().toISOString() }, { onConflict: "owner_id,source,account,asset" }).select("*").single();
-    if (error) setHoldingNotice(errorMessage(error)); else { setHoldings(previous => [data as Holding, ...previous.filter(item => item.id !== data.id)]); setHoldingForm({ asset: "", account: "spot", amount: "", direction: "long", is_public: true }); setHoldingPrice(null); setHoldingPriceState("idle"); setHoldingNotice(`持仓已保存，价格取 Gate ${asset}_USDT 实时价 $${holdingPrice.toLocaleString("en-US", { maximumFractionDigits: 4 })}。`); }
+    const { data, error } = await db.from("portfolio_holdings").upsert({ source: "manual", asset, account: holdingForm.account || "spot", amount, price_usd: holdingPrice, entry_price_usd: entryPrice, leverage, direction: holdingForm.direction, is_public: holdingForm.is_public, synced_at: new Date().toISOString() }, { onConflict: "owner_id,source,account,asset" }).select("*").single();
+    if (error) setHoldingNotice(errorMessage(error)); else { setHoldings(previous => [data as Holding, ...previous.filter(item => item.id !== data.id)]); setHoldingForm({ asset: "", account: "spot", amount: "", entryPrice: "", leverage: "", direction: "long", is_public: true }); setHoldingPrice(null); setHoldingPriceState("idle"); setHoldingNotice(`持仓已保存：入场价 $${entryPrice}，${leverage} 倍杠杆，Gate ${asset}_USDT 实时价 $${holdingPrice.toLocaleString("en-US", { maximumFractionDigits: 4 })}。`); }
     setHoldingBusy(false);
   }
   async function removeHolding(id: string) { if (!db || !window.confirm("删除这项持仓？")) return; const { error } = await db.from("portfolio_holdings").delete().eq("id", id); if (error) setHoldingNotice(errorMessage(error)); else setHoldings(previous => previous.filter(item => item.id !== id)); }
@@ -287,7 +313,7 @@ export default function AdminPage() {
           <p className="admin-help">已发布文章对所有访客可见，草稿仅管理员可见。</p>
         </aside>
         <section className="admin-editor"><div className="admin-editor-heading"><div><p className="admin-kicker">WRITE · THINK · BUILD</p><h2>{draft.id ? "编辑文章" : "新的创作"}{dirty && <span> · 未保存</span>}</h2></div></div>
-          <section className="admin-portfolio"><div className="admin-portfolio-head"><div><p className="admin-kicker">PORTFOLIO</p><h3>持仓管理</h3></div></div><p className="admin-help">持仓由你手动录入；美元价格由服务端从 Gate 永续合约行情接口获取，浏览器不接触任何密钥。</p>{holdingNotice && <p className="admin-notice">{holdingNotice}</p>}<div className="admin-holding-list">{holdings.map(item => <div className="admin-holding-row" key={item.id}><strong>{item.asset}</strong><span className={item.direction === "short" ? "position-short" : "position-long"}>{item.direction === "short" ? "空" : "多"}</span><span>{item.source === "gate" ? "Gate" : "手动"} · {item.account}</span><span>{item.amount}</span><span>{item.price_usd == null ? "—" : `$${item.price_usd}`}</span><button type="button" onClick={() => removeHolding(item.id)}>删除</button></div>)}{!holdings.length && <p className="admin-help">暂无持仓记录。</p>}</div><form className="admin-holding-form" onSubmit={addHolding}><input aria-label="资产代码" placeholder="资产，如 ETH" value={holdingForm.asset} onChange={e => setHoldingForm({...holdingForm, asset:e.target.value})}/><input aria-label="账户" placeholder="账户，如 spot" value={holdingForm.account} onChange={e => setHoldingForm({...holdingForm, account:e.target.value})}/><input aria-label="数量" type="number" min="0" step="any" placeholder="数量" value={holdingForm.amount} onChange={e => setHoldingForm({...holdingForm, amount:e.target.value})}/><input aria-label="当前价格" readOnly title="Gate 永续合约实时价格，由服务端获取" placeholder={holdingPriceState === "loading" ? "正在获取价格…" : holdingPriceState === "missing" ? "未找到该永续合约" : "自动获取价格"} value={holdingPrice == null ? "" : `$${holdingPrice.toLocaleString("en-US", { maximumFractionDigits: 4 })}`}/><select aria-label="方向" value={holdingForm.direction} onChange={e => setHoldingForm({...holdingForm, direction:e.target.value as "long" | "short"})}><option value="long">多仓</option><option value="short">空仓</option></select><label className="admin-public-check"><input type="checkbox" checked={holdingForm.is_public} onChange={e => setHoldingForm({...holdingForm, is_public:e.target.checked})}/> 公开</label><button type="submit" disabled={holdingBusy}>{holdingBusy ? "保存中…" : "添加持仓"}</button></form></section>
+          <section className="admin-portfolio"><div className="admin-portfolio-head"><div><p className="admin-kicker">PORTFOLIO</p><h3>持仓管理</h3></div></div><p className="admin-help">持仓由你手动录入，需填写入场价格与杠杆倍数；实时价格由服务端从 Gate 永续合约行情接口获取，浏览器不接触任何密钥。</p>{holdingNotice && <p className="admin-notice">{holdingNotice}</p>}<div className="admin-holding-list">{holdings.map(item => { const mark = holdingMarks[item.asset] ?? item.price_usd ?? null; const roi = holdingRoi(item, mark); return <div className="admin-holding-row" key={item.id}><strong>{item.asset}</strong><span className={item.direction === "short" ? "position-short" : "position-long"}>{item.direction === "short" ? "空" : "多"}</span><span>{item.source === "gate" ? "Gate" : "手动"} · {item.account}</span><span>数量 {item.amount}</span><span>入场 ${item.entry_price_usd ?? "—"} · {item.leverage ?? 1}x</span><span className={roi == null ? "" : roi >= 0 ? "holding-roi up" : "holding-roi down"}>{formatRoi(roi)}</span><button type="button" onClick={() => removeHolding(item.id)}>删除</button></div>; })}{!holdings.length && <p className="admin-help">暂无持仓记录。</p>}</div><form className="admin-holding-form" onSubmit={addHolding}><input aria-label="资产代码" placeholder="资产，如 ETH" value={holdingForm.asset} onChange={e => setHoldingForm({...holdingForm, asset:e.target.value})}/><input aria-label="账户" placeholder="账户，如 spot" value={holdingForm.account} onChange={e => setHoldingForm({...holdingForm, account:e.target.value})}/><input aria-label="数量" type="number" min="0" step="any" placeholder="数量" value={holdingForm.amount} onChange={e => setHoldingForm({...holdingForm, amount:e.target.value})}/><input aria-label="入场价格" type="number" min="0" step="any" required placeholder="入场价格 USD" value={holdingForm.entryPrice} onChange={e => setHoldingForm({...holdingForm, entryPrice:e.target.value})}/><input aria-label="杠杆倍数" type="number" min="0" step="any" required placeholder="杠杆，如 10" value={holdingForm.leverage} onChange={e => setHoldingForm({...holdingForm, leverage:e.target.value})}/><input aria-label="当前价格" readOnly title="Gate 永续合约实时价格，由服务端获取" placeholder={holdingPriceState === "loading" ? "正在获取价格…" : holdingPriceState === "missing" ? "未找到该永续合约" : "自动获取价格"} value={holdingPrice == null ? "" : `$${holdingPrice.toLocaleString("en-US", { maximumFractionDigits: 4 })}`}/><select aria-label="方向" value={holdingForm.direction} onChange={e => setHoldingForm({...holdingForm, direction:e.target.value as "long" | "short"})}><option value="long">多仓</option><option value="short">空仓</option></select><label className="admin-public-check"><input type="checkbox" checked={holdingForm.is_public} onChange={e => setHoldingForm({...holdingForm, is_public:e.target.checked})}/> 公开</label><button type="submit" disabled={holdingBusy}>{holdingBusy ? "保存中…" : "添加持仓"}</button></form></section>
           {notice && <p className="admin-notice" role="status">{notice}</p>}
           {recovery && <div className="admin-recovery" role="alert">
             <div><strong>检测到上次未保存的草稿</strong><p>保存于 {new Date(recovery.savedAt).toLocaleString("zh-CN", { hour12: false })}，可能因浏览器意外关闭而中断。恢复后可继续编辑并保存。</p></div>
