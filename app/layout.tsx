@@ -14,7 +14,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "NILING_DUSK | 记录思考与成长",
-  description: "NILING_DUSK 的个人博客，分享加密货币、美股投资与软件工程的学习、研究与思考。",
+  description:
+    "NILING_DUSK 的个人博客，分享加密货币、美股投资与软件工程的学习、研究与思考。",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -27,4 +28,3 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     </html>
   );
 }
-
