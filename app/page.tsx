@@ -12,6 +12,7 @@ import {
   markPrice,
   roiClass,
   type Holding,
+  type HoldingRecord,
   type LiveMarks,
 } from "@/lib/portfolio";
 
@@ -167,6 +168,7 @@ function PortfolioCard({
 /** 持仓详情弹窗：支持搜索品种显示 1s 实时行情，逐项展示入场价、杠杆、实时价与当前收益率。 */
 function PortfolioModal({
   holdings,
+  records,
   marks,
   tickerMap,
   searchedSymbol,
@@ -175,6 +177,7 @@ function PortfolioModal({
   onClose,
 }: {
   holdings: Holding[];
+  records: HoldingRecord[];
   marks: LiveMarks;
   tickerMap: TickerMap;
   searchedSymbol: string;
@@ -182,11 +185,15 @@ function PortfolioModal({
   updatedAt: string | null;
   onClose: () => void;
 }) {
+  const [activeTab, setActiveTab] = useState<"current" | "records">("current");
   const cleanSearch = searchedSymbol.trim().toUpperCase();
   const searchTicker = cleanSearch ? tickerMap[cleanSearch] : null;
   const isSearchValid = /^[A-Z0-9]{2,20}$/.test(cleanSearch);
 
   const filteredHoldings = holdings.filter((item) =>
+    cleanSearch ? item.asset.includes(cleanSearch) : true,
+  );
+  const filteredRecords = records.filter((item) =>
     cleanSearch ? item.asset.includes(cleanSearch) : true,
   );
 
@@ -198,21 +205,34 @@ function PortfolioModal({
         className="portfolio-modal"
         role="dialog"
         aria-modal="true"
-        aria-label="持仓详情"
+        aria-label="持仓与交易记录"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           autoFocus
           className="modal-close"
-          aria-label="关闭持仓详情"
+          aria-label="关闭弹窗"
           onClick={onClose}
         >
           ×
         </button>
         <div className="portfolio-modal-head">
           <div>
-            <p className="portfolio-kicker">LIVE PORTFOLIO</p>
-            <h2>持仓详情与行情搜索</h2>
+            <p className="portfolio-kicker">LIVE PORTFOLIO & TRADING RECORDS</p>
+            <div style={{ display: "flex", gap: 16, alignItems: "center", marginTop: 4 }}>
+              <button
+                className={`portfolio-tab-btn ${activeTab === "current" ? "active" : ""}`}
+                onClick={() => setActiveTab("current")}
+              >
+                当前持仓 ({holdings.length})
+              </button>
+              <button
+                className={`portfolio-tab-btn ${activeTab === "records" ? "active" : ""}`}
+                onClick={() => setActiveTab("records")}
+              >
+                历史持仓记录 ({records.length})
+              </button>
+            </div>
           </div>
           <span className="live-dot">● 实时价格 · 1 秒刷新</span>
         </div>
@@ -223,7 +243,7 @@ function PortfolioModal({
             <Icon name="search" />
             <input
               type="text"
-              placeholder="搜索持仓或输入品种代码（如 SOL, DOGE, BTC, ETH）查看 1s 实时价格..."
+              placeholder="搜索持仓/平仓记录或输入品种代码（如 SOL, DOGE, BTC）查看 1s 实时价格..."
               value={searchedSymbol}
               onChange={(e) => onSearchChange(e.target.value.toUpperCase().trim())}
               className="portfolio-search-input"
@@ -247,7 +267,7 @@ function PortfolioModal({
               <div>
                 <strong>{cleanSearch} / USDT 永续合约</strong>
                 <span className="search-result-badge" style={{ marginLeft: 10 }}>
-                  {isInHolding ? "已在持仓中" : "行情查询品种"}
+                  {isInHolding ? "当前持仓中" : "行情查询品种"}
                 </span>
               </div>
               <span className="live-dot-pulse">1s 实时刷新中</span>
@@ -287,90 +307,155 @@ function PortfolioModal({
           </div>
         )}
 
-        {/* 持仓列表 */}
-        {filteredHoldings.length ? (
-          <div className="portfolio-detail-list">
-            {filteredHoldings.map((item) => {
-              const direction = item.direction === "short" ? "short" : "long";
-              const mark = markPrice(item, marks);
-              const value = marketValue(item, marks);
-              const roi = holdingRoi(item, marks);
-              return (
-                <div className="portfolio-detail" key={item.id}>
-                  <div className="portfolio-detail-title">
-                    <div className="asset-heading">
-                      <strong>{item.asset}</strong>
-                      <span className={`position-badge ${direction}`}>
-                        {direction === "short" ? "空仓" : "多仓"}
-                      </span>
-                    </div>
-                    <span>
-                      {item.source === "gate"
-                        ? `Gate · ${item.account}`
-                        : "手动持仓"}
-                    </span>
-                  </div>
-                  <div className="portfolio-metrics">
-                    <div>
-                      <small>仓位方向</small>
-                      <b className={`position-value ${direction}`}>
-                        {direction === "short" ? "空仓" : "多仓"}
-                      </b>
-                    </div>
-                    <div>
-                      <small>杠杆倍数</small>
-                      <b>{item.leverage == null ? "—" : `${item.leverage}x`}</b>
-                    </div>
-                    <div>
-                      <small>持仓数量</small>
-                      <b>
-                        {item.amount.toLocaleString(undefined, {
-                          maximumFractionDigits: 8,
-                        })}
-                      </b>
-                    </div>
-                    <div>
-                      <small>入场价格</small>
-                      <b>
-                        {item.entry_price_usd == null
-                          ? "—"
-                          : `$${item.entry_price_usd.toLocaleString(undefined, { maximumFractionDigits: 4 })}`}
-                      </b>
-                    </div>
-                    <div>
-                      <small>实时价格 (1s)</small>
-                      <b>
-                        {mark == null
-                          ? "加载中…"
-                          : `$${mark.toLocaleString(undefined, { maximumFractionDigits: 4 })}`}
-                      </b>
-                    </div>
-                    <div>
-                      <small>持仓市值</small>
-                      <b>
-                        {value == null
-                          ? "—"
-                          : value.toLocaleString("en-US", {
-                              style: "currency",
-                              currency: "USD",
-                              maximumFractionDigits: 2,
+        {/* 当前持仓 TAB */}
+        {activeTab === "current" && (
+          <>
+            {filteredHoldings.length ? (
+              <div className="portfolio-detail-list">
+                {filteredHoldings.map((item) => {
+                  const direction = item.direction === "short" ? "short" : "long";
+                  const mark = markPrice(item, marks);
+                  const value = marketValue(item, marks);
+                  const roi = holdingRoi(item, marks);
+                  return (
+                    <div className="portfolio-detail" key={item.id}>
+                      <div className="portfolio-detail-title">
+                        <div className="asset-heading">
+                          <strong>{item.asset}</strong>
+                          <span className={`position-badge ${direction}`}>
+                            {direction === "short" ? "空仓" : "多仓"}
+                          </span>
+                        </div>
+                        <span>
+                          {item.source === "gate"
+                            ? `Gate · ${item.account}`
+                            : "手动持仓"}
+                        </span>
+                      </div>
+                      <div className="portfolio-metrics">
+                        <div>
+                          <small>仓位方向</small>
+                          <b className={`position-value ${direction}`}>
+                            {direction === "short" ? "空仓" : "多仓"}
+                          </b>
+                        </div>
+                        <div>
+                          <small>杠杆倍数</small>
+                          <b>{item.leverage == null ? "—" : `${item.leverage}x`}</b>
+                        </div>
+                        <div>
+                          <small>持仓数量</small>
+                          <b>
+                            {item.amount.toLocaleString(undefined, {
+                              maximumFractionDigits: 8,
                             })}
-                      </b>
+                          </b>
+                        </div>
+                        <div>
+                          <small>入场价格</small>
+                          <b>
+                            {item.entry_price_usd == null
+                              ? "—"
+                              : `$${item.entry_price_usd.toLocaleString(undefined, { maximumFractionDigits: 4 })}`}
+                          </b>
+                        </div>
+                        <div>
+                          <small>实时价格 (1s)</small>
+                          <b>
+                            {mark == null
+                              ? "加载中…"
+                              : `$${mark.toLocaleString(undefined, { maximumFractionDigits: 4 })}`}
+                          </b>
+                        </div>
+                        <div>
+                          <small>持仓市值</small>
+                          <b>
+                            {value == null
+                              ? "—"
+                              : value.toLocaleString("en-US", {
+                                  style: "currency",
+                                  currency: "USD",
+                                  maximumFractionDigits: 2,
+                                })}
+                          </b>
+                        </div>
+                        <div>
+                          <small>当前收益率</small>
+                          <b className={roiClass(roi)}>{formatRoi(roi) ?? "—"}</b>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <small>当前收益率</small>
-                      <b className={roiClass(roi)}>{formatRoi(roi) ?? "—"}</b>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : holdings.length ? (
-          <p className="portfolio-empty">未查找到匹配资产“{searchedSymbol}”的持仓。</p>
-        ) : (
-          <p className="portfolio-empty">暂无公开持仓。</p>
+                  );
+                })}
+              </div>
+            ) : holdings.length ? (
+              <p className="portfolio-empty">未查找到匹配“{searchedSymbol}”的当前持仓。</p>
+            ) : (
+              <p className="portfolio-empty">暂无公开持仓。</p>
+            )}
+          </>
         )}
+
+        {/* 历史持仓记录 TAB (所有人均可查看：包含入场价格，平仓价格，收益率) */}
+        {activeTab === "records" && (
+          <>
+            {filteredRecords.length ? (
+              <div className="portfolio-detail-list">
+                {filteredRecords.map((item) => {
+                  const direction = item.direction === "short" ? "short" : "long";
+                  return (
+                    <div className="portfolio-detail" key={item.id}>
+                      <div className="portfolio-detail-title">
+                        <div className="asset-heading">
+                          <strong>{item.asset}</strong>
+                          <span className={`position-badge ${direction}`}>
+                            {direction === "short" ? "空仓" : "多仓"}
+                          </span>
+                        </div>
+                        <span>平仓时间：{new Date(item.closed_at).toLocaleString("zh-CN")}</span>
+                      </div>
+                      <div className="portfolio-metrics" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
+                        <div>
+                          <small>杠杆倍数</small>
+                          <b>{item.leverage == null ? "—" : `${item.leverage}x`}</b>
+                        </div>
+                        <div>
+                          <small>平仓数量</small>
+                          <b>
+                            {item.amount.toLocaleString(undefined, {
+                              maximumFractionDigits: 8,
+                            })}
+                          </b>
+                        </div>
+                        <div>
+                          <small>入场价格</small>
+                          <b>
+                            ${item.entry_price_usd.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                          </b>
+                        </div>
+                        <div>
+                          <small>平仓价格</small>
+                          <b>
+                            ${item.exit_price_usd.toLocaleString(undefined, { maximumFractionDigits: 4 })}
+                          </b>
+                        </div>
+                        <div>
+                          <small>平仓收益率</small>
+                          <b className={roiClass(item.roi)}>{formatRoi(item.roi) ?? "—"}</b>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : records.length ? (
+              <p className="portfolio-empty">未查找到匹配“{searchedSymbol}”的历史平仓记录。</p>
+            ) : (
+              <p className="portfolio-empty">暂无公开的历史平仓记录。</p>
+            )}
+          </>
+        )}
+
         <small className="portfolio-updated">
           最后更新：
           {updatedAt ? new Date(updatedAt).toLocaleString("zh-CN") : "—"}
@@ -386,6 +471,7 @@ export default function Home() {
   const [loadError, setLoadError] = useState(false);
   const [reload, setReload] = useState(0);
   const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [records, setRecords] = useState<HoldingRecord[]>([]);
   const [holdingsUpdated, setHoldingsUpdated] = useState<string | null>(null);
   const [liveMarks, setLiveMarks] = useState<LiveMarks>({});
   const [tickers, setTickers] = useState<Ticker[]>([]);
@@ -472,11 +558,13 @@ export default function Home() {
       clearInterval(timer);
     };
   }, []);
-  // 公开持仓：访客未登录也要能看，所以只用匿名 apikey 直连 REST 接口。
+  // 公开持仓与历史平仓记录：访客未登录也要能看，所以只用匿名 apikey 直连 REST 接口。
   useEffect(() => {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
     if (!url || !key) return;
+
+    // 获取当前持仓
     fetch(
       url +
         "/rest/v1/portfolio_holdings?select=id,asset,amount,value_usd,price_usd,entry_price_usd,leverage,direction,source,account,synced_at&is_public=eq.true&order=value_usd.desc.nullslast",
@@ -487,6 +575,20 @@ export default function Home() {
         if (Array.isArray(rows)) {
           setHoldings(rows);
           setHoldingsUpdated(rows[0]?.synced_at ?? null);
+        }
+      })
+      .catch(() => undefined);
+
+    // 获取历史持仓/平仓记录
+    fetch(
+      url +
+        "/rest/v1/portfolio_records?select=id,asset,direction,entry_price_usd,exit_price_usd,amount,leverage,roi,pnl_usd,closed_at&is_public=eq.true&order=closed_at.desc",
+      { headers: { apikey: key }, cache: "no-store" },
+    )
+      .then((response) => (response.ok ? response.json() : []))
+      .then((rows) => {
+        if (Array.isArray(rows)) {
+          setRecords(rows);
         }
       })
       .catch(() => undefined);
@@ -893,6 +995,7 @@ export default function Home() {
       {portfolioOpen && (
         <PortfolioModal
           holdings={holdings}
+          records={records}
           marks={liveMarks}
           tickerMap={tickerMap}
           searchedSymbol={searchedSymbol}

@@ -97,6 +97,35 @@ create policy "Admins manage holdings" on public.portfolio_holdings
   with check ((select public.is_blog_admin()));
 create index if not exists portfolio_holdings_public_idx on public.portfolio_holdings(is_public, synced_at desc);
 
+-- 历史持仓交易记录表 (portfolio_records)
+create table if not exists public.portfolio_records (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  asset text not null check (asset = upper(asset) and char_length(asset) between 2 and 20),
+  direction text not null default 'long' check (direction in ('long', 'short')),
+  entry_price_usd numeric not null check (entry_price_usd >= 0),
+  exit_price_usd numeric not null check (exit_price_usd >= 0),
+  amount numeric not null default 0 check (amount >= 0),
+  leverage numeric default 1 check (leverage is null or leverage > 0),
+  roi numeric not null,
+  pnl_usd numeric not null,
+  closed_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  is_public boolean not null default true
+);
+alter table public.portfolio_records enable row level security;
+revoke all on public.portfolio_records from anon, authenticated;
+grant select on public.portfolio_records to anon, authenticated;
+grant insert, update, delete on public.portfolio_records to authenticated;
+drop policy if exists "Public read public records" on public.portfolio_records;
+create policy "Public read public records" on public.portfolio_records
+  for select to anon, authenticated using (is_public = true);
+drop policy if exists "Admins manage records" on public.portfolio_records;
+create policy "Admins manage records" on public.portfolio_records
+  for all to authenticated using ((select public.is_blog_admin()))
+  with check ((select public.is_blog_admin()));
+create index if not exists portfolio_records_public_idx on public.portfolio_records(is_public, closed_at desc);
+
 -- 图床：封面链接公开可访问，草稿数据仍然仅管理员可读取。
 -- 只允许 JPEG / PNG / WebP / GIF，最大 5MB，禁止 SVG。
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

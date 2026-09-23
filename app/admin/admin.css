@@ -341,6 +341,181 @@
 .admin-portfolio .admin-notice {
   margin: 10px 0;
 }
+/* ===== 历史平仓记录与收益统计 ===== */
+.admin-records-section {
+  margin-top: 24px;
+}
+.admin-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 16px 0;
+}
+.admin-stat-card {
+  background: #ffffff;
+  border: 1px solid #dce5eb;
+  border-radius: 8px;
+  padding: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+}
+.stat-label {
+  font-size: 11px;
+  color: #6d8190;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.stat-value {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.2;
+  font-family: Consolas, monospace;
+}
+.stat-value.up {
+  color: #139d7f;
+}
+.stat-value.down {
+  color: #d65d6d;
+}
+.stat-sub {
+  font-size: 11px;
+  color: #7c8d9c;
+  margin-top: 6px;
+}
+.admin-record-list {
+  border-top: 1px solid #dce5e8;
+  margin-top: 16px;
+}
+.admin-record-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1.5fr 1fr 1.5fr 1.3fr auto;
+  gap: 12px;
+  padding: 11px 0;
+  border-bottom: 1px solid #e5ecef;
+  align-items: center;
+  font-size: 12px;
+}
+.record-asset {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.record-asset strong {
+  font-size: 13px;
+  color: #172b3c;
+}
+.position-long {
+  background: #e6f7f3;
+  color: #139d7f;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.position-short {
+  background: #fdebee;
+  color: #d65d6d;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.record-lev {
+  font-size: 10px;
+  color: #8996a2;
+  background: #eef3f6;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.record-prices, .record-amount, .record-time {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: #6d8190;
+  font-size: 11px;
+}
+.record-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-weight: 600;
+  font-size: 12px;
+  font-family: Consolas, monospace;
+}
+.record-pnl.up {
+  color: #139d7f;
+}
+.record-pnl.down {
+  color: #d65d6d;
+}
+.record-public {
+  font-size: 10px;
+  color: #8996a2;
+}
+.record-actions {
+  display: flex;
+  gap: 6px;
+}
+.record-actions button {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+.record-actions .btn-del {
+  color: #b64d4d;
+  border-color: #edd3d3;
+}
+.admin-record-form {
+  margin-top: 20px;
+  background: #ffffff;
+  border: 1px solid #dce5eb;
+  border-radius: 8px;
+  padding: 16px;
+}
+.form-head-title {
+  font-weight: 700;
+  font-size: 13px;
+  color: #1d3344;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.btn-cancel {
+  font-size: 11px;
+  padding: 2px 8px;
+  color: #6d8190;
+}
+.record-form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+.record-form-grid input, .record-form-grid select {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.btn-save-rec {
+  grid-column: span 2;
+}
+@media (max-width: 900px) {
+  .admin-stats-grid {
+    grid-template-columns: 1fr;
+  }
+  .record-form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .btn-save-rec {
+    grid-column: 1 / -1;
+  }
+  .admin-record-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .record-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+}
 /* ===== 封面：链接、上传与预览 ===== */
 .admin-cover-row {
   display: flex;

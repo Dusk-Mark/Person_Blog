@@ -67,3 +67,41 @@ export function roiClass(roi: number | null): string {
   if (roi == null) return "holding-roi";
   return roi >= 0 ? "holding-roi up" : "holding-roi down";
 }
+
+/** 历史平仓/交易记录结构 */
+export type HoldingRecord = {
+  id: string;
+  asset: string;
+  direction: HoldingDirection;
+  entry_price_usd: number;
+  exit_price_usd: number;
+  amount: number;
+  leverage: number | null;
+  roi: number;
+  pnl_usd: number;
+  closed_at: string;
+  created_at?: string;
+  is_public?: boolean;
+};
+
+/**
+  计算平仓记录的收益率与收益额
+  - 多仓收益率 = (平仓价 - 入场价) / 入场价 × 杠杆
+  - 空仓收益率 = (入场价 - 平仓价) / 入场价 × 杠杆
+  - 收益额 (USD) = 入场价值 (数量 × 入场价) × 收益率 = 数量 × (平仓价 - 入场价) × 方向 × 杠杆
+*/
+export function calculateRecordMetrics(
+  entryPrice: number,
+  exitPrice: number,
+  amount: number,
+  direction: HoldingDirection,
+  leverage: number = 1,
+) {
+  if (!entryPrice || entryPrice <= 0) return { roi: 0, pnlUsd: 0 };
+  const dirMultiplier = direction === "short" ? -1 : 1;
+  const priceDiff = exitPrice - entryPrice;
+  const rawRoi = (priceDiff / entryPrice) * dirMultiplier;
+  const roi = rawRoi * (leverage || 1);
+  const pnlUsd = amount * entryPrice * roi;
+  return { roi, pnlUsd };
+}
