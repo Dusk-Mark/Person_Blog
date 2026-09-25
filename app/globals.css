@@ -293,6 +293,7 @@ input:focus-visible {
 }
 .post-cover {
   position: relative;
+  display: block;
   width: 100%;
   height: 175px;
   border: 0;
@@ -340,13 +341,11 @@ input:focus-visible {
   line-height: 1.55;
   margin: 0 0 8px;
 }
-.post h2 button {
-  border: 0;
-  padding: 0;
-  background: none;
+.post h2 a {
+  display: inline;
   text-align: left;
 }
-.post h2 button:hover,
+.post h2 a:hover,
 .popular-item:hover {
   color: #109e8b;
 }
@@ -1059,6 +1058,68 @@ input:focus-visible {
   border: 0;
   background: none;
 }
+/* ===== 独立文章阅读页 /posts/[slug] ===== */
+.post-site .header nav {
+  margin-left: auto;
+}
+.post-reading {
+  width: min(860px, calc(100% - 64px));
+  padding-block: 28px 48px;
+}
+.post-reading-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  margin-bottom: 22px;
+}
+.post-reading-back:hover {
+  color: #109e8b;
+}
+.post-reading-cover {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  max-height: 420px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #091c2a;
+  margin-bottom: 28px;
+}
+.post-reading-cover img {
+  object-fit: cover;
+}
+.post-reading-head {
+  margin-bottom: 28px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}
+.post-reading-head h1 {
+  font-size: clamp(26px, 4vw, 36px);
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.3px;
+  margin: 14px 0 12px;
+}
+.post-reading-byline {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
+.post-reading-excerpt {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.75;
+}
+.post-reading-body {
+  font-size: 15px;
+  padding-bottom: 24px;
+}
+.post-reading-body > *:first-child {
+  margin-top: 0;
+}
 @media (min-width: 1450px) {
   .container {
     width: 1200px;
@@ -1247,6 +1308,18 @@ input:focus-visible {
   }
   .article-modal h2 {
     font-size: 20px;
+  }
+  .post-reading {
+    width: min(860px, calc(100% - 32px));
+    padding-block: 20px 36px;
+  }
+  .post-reading-cover {
+    max-height: 240px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+  }
+  .post-reading-head h1 {
+    font-size: 24px;
   }
   .hero-tags {
     flex-wrap: wrap;

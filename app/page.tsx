@@ -1,9 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import Opening from "./opening";
 import {
   formatRoi,
@@ -19,6 +18,7 @@ import {
 type PublicPost = {
   id: string;
   title: string;
+  slug: string;
   category: string;
   date: string;
   text: string;
@@ -482,7 +482,6 @@ export default function Home() {
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [dark, setDark] = useState(false);
-  const [selected, setSelected] = useState<PublicPost | null>(null);
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
 
@@ -496,7 +495,7 @@ export default function Home() {
         if (!url || !key) throw new Error("Missing configuration");
         const response = await fetch(
           url +
-            "/rest/v1/blog_posts?select=id,title,category,created_at,excerpt,cover_url,content&status=eq.published&order=created_at.desc",
+            "/rest/v1/blog_posts?select=id,title,slug,category,created_at,excerpt,cover_url,content&status=eq.published&order=created_at.desc",
           {
             headers: { apikey: key },
             signal: controller.signal,
@@ -507,6 +506,7 @@ export default function Home() {
         const rows: {
           id: string;
           title: string;
+          slug: string;
           category: string;
           created_at: string;
           excerpt: string;
@@ -518,6 +518,7 @@ export default function Home() {
             rows.map((row) => ({
               id: row.id,
               title: row.title,
+              slug: row.slug,
               category: row.category,
               date: row.created_at.slice(0, 10),
               text: row.excerpt,
@@ -785,9 +786,9 @@ export default function Home() {
           )}
           {filtered.map((post) => (
             <article className="post" key={post.id}>
-              <button
+              <Link
                 className="post-cover"
-                onClick={() => setSelected(post)}
+                href={`/posts/${post.slug}`}
                 aria-label={post.title}
               >
                 <Image
@@ -797,7 +798,7 @@ export default function Home() {
                   sizes="(max-width: 650px) 100vw, 360px"
                   unoptimized
                 />
-              </button>
+              </Link>
               <div className="post-body">
                 <div className="meta">
                   <span className="badge">{post.category}</span>
@@ -805,9 +806,7 @@ export default function Home() {
                   <time>{post.date}</time>
                 </div>
                 <h2>
-                  <button onClick={() => setSelected(post)}>
-                    {post.title}
-                  </button>
+                  <Link href={`/posts/${post.slug}`}>{post.title}</Link>
                 </h2>
                 <p>{post.text}</p>
                 <div className="stats">
@@ -885,10 +884,10 @@ export default function Home() {
           <section className="popular">
             <h2>最新发布</h2>
             {posts.slice(0, 4).map((post, index) => (
-              <button
+              <Link
                 className="popular-item"
                 key={post.id}
-                onClick={() => setSelected(post)}
+                href={`/posts/${post.slug}`}
               >
                 <span className="rank">{index + 1}</span>
                 <span className="popular-image">
@@ -904,7 +903,7 @@ export default function Home() {
                   {post.title}
                   <span className="stats">{post.date}</span>
                 </span>
-              </button>
+              </Link>
             ))}
           </section>
           <section className="subscribe">
@@ -959,39 +958,6 @@ export default function Home() {
           <span className="copyright">© 2026 NILING_DUSK</span>
         </div>
       </footer>
-      {selected && (
-        <div className="modal-backdrop" onClick={() => setSelected(null)}>
-          <section
-            className="article-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label={selected.title}
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setSelected(null);
-            }}
-          >
-            <button
-              autoFocus
-              className="modal-close"
-              aria-label="关闭文章"
-              onClick={() => setSelected(null)}
-            >
-              ×
-            </button>
-            <span className="badge">{selected.category}</span>
-            <h2>{selected.title}</h2>
-            <p className="modal-byline">
-              NILING_DUSK · {selected.date} · {selected.time} 分钟阅读
-            </p>
-            <div className="public-prose">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
-                {selected.content}
-              </ReactMarkdown>
-            </div>
-          </section>
-        </div>
-      )}
       {portfolioOpen && (
         <PortfolioModal
           holdings={holdings}
