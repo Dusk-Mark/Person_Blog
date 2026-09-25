@@ -489,6 +489,54 @@ input:focus-visible {
   padding: 17px 0;
   border-bottom: 1px solid var(--line);
 }
+.portfolio-record-week {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+.portfolio-record-week-summary {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  cursor: pointer;
+  list-style: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+.portfolio-record-week-summary::-webkit-details-marker {
+  display: none;
+}
+.portfolio-record-week-summary::before {
+  content: "▸";
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  margin-right: -4px;
+}
+.portfolio-record-week[open] > .portfolio-record-week-summary::before {
+  content: "▾";
+}
+.portfolio-record-week-summary .week-meta {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 12px;
+}
+.portfolio-record-week-summary .week-pnl {
+  font-family: Consolas, monospace;
+  font-size: 13px;
+  min-width: 5.5em;
+  text-align: right;
+}
+.portfolio-record-week-summary .week-pnl.up {
+  color: #139d7f;
+}
+.portfolio-record-week-summary .week-pnl.down {
+  color: #d65d6d;
+}
+.portfolio-record-week .portfolio-detail:last-child {
+  border-bottom: 0;
+}
 .portfolio-detail-title {
   display: flex;
   align-items: center;

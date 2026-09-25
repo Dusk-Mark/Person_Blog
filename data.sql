@@ -98,6 +98,7 @@ create policy "Admins manage holdings" on public.portfolio_holdings
 create index if not exists portfolio_holdings_public_idx on public.portfolio_holdings(is_public, synced_at desc);
 
 -- 历史持仓交易记录表 (portfolio_records)
+-- 录入保证金与杠杆；名义仓位 amount = 保证金 × 杠杆；收益额 = 保证金 × 收益率。
 create table if not exists public.portfolio_records (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
@@ -106,6 +107,7 @@ create table if not exists public.portfolio_records (
   entry_price_usd numeric not null check (entry_price_usd >= 0),
   exit_price_usd numeric not null check (exit_price_usd >= 0),
   amount numeric not null default 0 check (amount >= 0),
+  margin_usd numeric check (margin_usd is null or margin_usd >= 0),
   leverage numeric default 1 check (leverage is null or leverage > 0),
   roi numeric not null,
   pnl_usd numeric not null,
@@ -113,6 +115,8 @@ create table if not exists public.portfolio_records (
   created_at timestamptz not null default now(),
   is_public boolean not null default true
 );
+alter table public.portfolio_records
+  add column if not exists margin_usd numeric check (margin_usd is null or margin_usd >= 0);
 alter table public.portfolio_records enable row level security;
 revoke all on public.portfolio_records from anon, authenticated;
 grant select on public.portfolio_records to anon, authenticated;

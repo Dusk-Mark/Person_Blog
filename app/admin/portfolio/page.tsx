@@ -7,7 +7,9 @@ import { createBrowserDatabase } from "@/lib/supabase";
 import {
   calculateRecordMetrics,
   formatRoi,
+  groupRecordsByPeriod,
   holdingRoi,
+  recordMargin,
   roiClass,
   type Holding,
   type HoldingDirection,
@@ -30,6 +32,87 @@ function errorMessage(error: { message: string; code?: string }) {
     return "数据库表尚未初始化，请在 Supabase 中运行 SQL。";
   if (error.code === "42501") return "权限不足，请检查管理员授权与数据库策略。";
   return error.message;
+}
+
+/** 单条平仓记录行，年/月/周各层级共用。 */
+function RecordRow({
+  item,
+  onEdit,
+  onDelete,
+}: {
+  item: HoldingRecord;
+  onEdit: (item: HoldingRecord) => void;
+  onDelete: (id: string) => void;
+}) {
+  const margin = recordMargin(item);
+  return (
+    <div className="admin-record-row">
+      <div className="record-asset">
+        <strong>{item.asset}</strong>
+        <span
+          className={item.direction === "short" ? "position-short" : "position-long"}
+        >
+          {item.direction === "short" ? "空" : "多"}
+        </span>
+        {item.leverage && item.leverage > 1 && (
+          <span className="record-lev">{item.leverage}x</span>
+        )}
+      </div>
+      <div className="record-prices">
+        <span>入场 ${item.entry_price_usd}</span>
+        <span>平仓 ${item.exit_price_usd}</span>
+      </div>
+      <div className="record-amount">
+        <span>
+          保证金 $
+          {(margin ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+        </span>
+      </div>
+      <div className="record-metrics">
+        <span className={roiClass(item.roi)}>ROI: {formatRoi(item.roi) ?? "0%"}</span>
+        <span className={`record-pnl ${item.pnl_usd >= 0 ? "up" : "down"}`}>
+          PnL: ${item.pnl_usd >= 0 ? "+" : ""}
+          {item.pnl_usd.toFixed(2)}
+        </span>
+      </div>
+      <div className="record-time">
+        <span>
+          {item.closed_at ? item.closed_at.slice(0, 16).replace("T", " ") : "—"}
+        </span>
+        <span className="record-public">{item.is_public ? "公开" : "私密"}</span>
+      </div>
+      <div className="record-actions">
+        <button type="button" onClick={() => onEdit(item)}>
+          编辑
+        </button>
+        <button type="button" className="btn-del" onClick={() => onDelete(item.id)}>
+          删除
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** 年/月/周折叠层的标题行：层级名称 + 笔数 + 该层收益额合计。 */
+function PeriodSummary({
+  label,
+  count,
+  totalPnl,
+}: {
+  label: string;
+  count: number;
+  totalPnl: number;
+}) {
+  return (
+    <>
+      <span className="period-label">{label}</span>
+      <span className="period-meta">{count} 笔</span>
+      <span className={`period-pnl ${totalPnl >= 0 ? "up" : "down"}`}>
+        ${totalPnl >= 0 ? "+" : ""}
+        {totalPnl.toFixed(2)}
+      </span>
+    </>
+  );
 }
 
 export default function AdminPortfolioPage() {
@@ -67,7 +150,7 @@ export default function AdminPortfolioPage() {
     direction: "long" as HoldingDirection,
     entryPriceUsd: "",
     exitPriceUsd: "",
-    amount: "",
+    marginUsd: "",
     leverage: "1",
     isPublic: true,
     closedAt: "",
@@ -236,6 +319,8 @@ export default function AdminPortfolioPage() {
     };
   }, [records]);
 
+  const recordYears = useMemo(() => groupRecordsByPeriod(records), [records]);
+
   function updateHoldingForm<K extends keyof HoldingForm>(
     key: K,
     value: HoldingForm[K],
@@ -328,7 +413,7 @@ export default function AdminPortfolioPage() {
     const asset = recordForm.asset.trim().toUpperCase();
     const entryPrice = Number(recordForm.entryPriceUsd);
     const exitPrice = Number(recordForm.exitPriceUsd);
-    const amount = Number(recordForm.amount);
+    const marginUsd = Number(recordForm.marginUsd);
     const leverage = Number(recordForm.leverage) || 1;
 
     if (!/^[A-Z0-9]{2,20}$/.test(asset)) {
@@ -339,15 +424,19 @@ export default function AdminPortfolioPage() {
       setHoldingNotice("请填写大于 0 的入场价格与平仓价格。");
       return;
     }
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setHoldingNotice("请填写大于 0 的平仓数量。");
+    if (!Number.isFinite(marginUsd) || marginUsd <= 0) {
+      setHoldingNotice("请填写大于 0 的保证金。");
+      return;
+    }
+    if (!Number.isFinite(leverage) || leverage <= 0) {
+      setHoldingNotice("请填写大于 0 的杠杆倍数。");
       return;
     }
 
-    const { roi, pnlUsd } = calculateRecordMetrics(
+    const { roi, pnlUsd, amount } = calculateRecordMetrics(
       entryPrice,
       exitPrice,
-      amount,
+      marginUsd,
       recordForm.direction,
       leverage,
     );
@@ -367,6 +456,7 @@ export default function AdminPortfolioPage() {
           direction: recordForm.direction,
           entry_price_usd: entryPrice,
           exit_price_usd: exitPrice,
+          margin_usd: marginUsd,
           amount,
           leverage,
           roi,
@@ -395,6 +485,7 @@ export default function AdminPortfolioPage() {
           direction: recordForm.direction,
           entry_price_usd: entryPrice,
           exit_price_usd: exitPrice,
+          margin_usd: marginUsd,
           amount,
           leverage,
           roi,
@@ -416,13 +507,14 @@ export default function AdminPortfolioPage() {
   }
 
   function startEditRecord(item: HoldingRecord) {
+    const margin = recordMargin(item);
     setEditingRecordId(item.id);
     setRecordForm({
       asset: item.asset,
       direction: item.direction,
       entryPriceUsd: String(item.entry_price_usd),
       exitPriceUsd: String(item.exit_price_usd),
-      amount: String(item.amount),
+      marginUsd: margin != null ? String(margin) : "",
       leverage: String(item.leverage ?? 1),
       isPublic: item.is_public ?? true,
       closedAt: item.closed_at ? new Date(item.closed_at).toISOString().slice(0, 16) : "",
@@ -436,7 +528,7 @@ export default function AdminPortfolioPage() {
       direction: "long",
       entryPriceUsd: "",
       exitPriceUsd: "",
-      amount: "",
+      marginUsd: "",
       leverage: "1",
       isPublic: true,
       closedAt: "",
@@ -621,7 +713,7 @@ export default function AdminPortfolioPage() {
               </div>
             </div>
             <p className="admin-help">
-              录入已平仓交易，系统将自动计算杠杆收益率 (ROI) 与实际收益额 (PnL USD)。可按 1天/1周/3周 自动汇总收益指标。
+              录入已平仓交易的保证金、杠杆与价格，系统按「收益率 = 价格涨跌幅 × 杠杆」「收益额 = 保证金 × 收益率」自动计算；名义仓位由保证金 × 杠杆推导。
             </p>
 
             <div className="admin-stats-grid">
@@ -655,45 +747,68 @@ export default function AdminPortfolioPage() {
             </div>
 
             <div className="admin-record-list">
-              {records.map((item) => (
-                <div className="admin-record-row" key={item.id}>
-                  <div className="record-asset">
-                    <strong>{item.asset}</strong>
-                    <span className={item.direction === "short" ? "position-short" : "position-long"}>
-                      {item.direction === "short" ? "空" : "多"}
-                    </span>
-                    {item.leverage && item.leverage > 1 && (
-                      <span className="record-lev">{item.leverage}x</span>
-                    )}
+              {recordYears.map((year, yearIndex) => (
+                <details
+                  className="record-period record-year"
+                  key={year.key}
+                  open={yearIndex === 0}
+                >
+                  <summary className="record-period-summary year-summary">
+                    <PeriodSummary
+                      label={year.label}
+                      count={year.count}
+                      totalPnl={year.totalPnl}
+                    />
+                  </summary>
+                  <div className="record-period-body">
+                    {year.months.map((month, monthIndex) => (
+                      <details
+                        className="record-period record-month"
+                        key={month.key}
+                        open={yearIndex === 0 && monthIndex === 0}
+                      >
+                        <summary className="record-period-summary month-summary">
+                          <PeriodSummary
+                            label={month.label}
+                            count={month.count}
+                            totalPnl={month.totalPnl}
+                          />
+                        </summary>
+                        <div className="record-period-body">
+                          {month.weeks.map((week, weekIndex) => (
+                            <details
+                              className="record-period record-week"
+                              key={week.key}
+                              open={
+                                yearIndex === 0 &&
+                                monthIndex === 0 &&
+                                weekIndex === 0
+                              }
+                            >
+                              <summary className="record-period-summary week-summary">
+                                <PeriodSummary
+                                  label={week.label}
+                                  count={week.count}
+                                  totalPnl={week.totalPnl}
+                                />
+                              </summary>
+                              <div className="record-period-body record-rows">
+                                {week.records.map((item) => (
+                                  <RecordRow
+                                    key={item.id}
+                                    item={item}
+                                    onEdit={startEditRecord}
+                                    onDelete={removeRecord}
+                                  />
+                                ))}
+                              </div>
+                            </details>
+                          ))}
+                        </div>
+                      </details>
+                    ))}
                   </div>
-                  <div className="record-prices">
-                    <span>入场 ${item.entry_price_usd}</span>
-                    <span>平仓 ${item.exit_price_usd}</span>
-                  </div>
-                  <div className="record-amount">
-                    <span>数量 {item.amount}</span>
-                  </div>
-                  <div className="record-metrics">
-                    <span className={roiClass(item.roi)}>
-                      ROI: {formatRoi(item.roi) ?? "0%"}
-                    </span>
-                    <span className={`record-pnl ${item.pnl_usd >= 0 ? "up" : "down"}`}>
-                      PnL: ${item.pnl_usd >= 0 ? "+" : ""}{item.pnl_usd.toFixed(2)}
-                    </span>
-                  </div>
-                  <div className="record-time">
-                    <span>{item.closed_at ? item.closed_at.slice(0, 16).replace("T", " ") : "—"}</span>
-                    <span className="record-public">{item.is_public ? "公开" : "私密"}</span>
-                  </div>
-                  <div className="record-actions">
-                    <button type="button" onClick={() => startEditRecord(item)}>
-                      编辑
-                    </button>
-                    <button type="button" className="btn-del" onClick={() => removeRecord(item.id)}>
-                      删除
-                    </button>
-                  </div>
-                </div>
+                </details>
               ))}
               {!records.length && <p className="admin-help">暂无历史平仓记录。</p>}
             </div>
@@ -746,14 +861,14 @@ export default function AdminPortfolioPage() {
                   onChange={(e) => setRecordForm({ ...recordForm, exitPriceUsd: e.target.value })}
                 />
                 <input
-                  aria-label="平仓数量"
+                  aria-label="保证金"
                   type="number"
                   min="0"
                   step="any"
                   required
-                  placeholder="数量"
-                  value={recordForm.amount}
-                  onChange={(e) => setRecordForm({ ...recordForm, amount: e.target.value })}
+                  placeholder="保证金 USD"
+                  value={recordForm.marginUsd}
+                  onChange={(e) => setRecordForm({ ...recordForm, marginUsd: e.target.value })}
                 />
                 <input
                   aria-label="杠杆倍数"

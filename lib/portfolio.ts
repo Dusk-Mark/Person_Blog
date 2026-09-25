@@ -75,7 +75,10 @@ export type HoldingRecord = {
   direction: HoldingDirection;
   entry_price_usd: number;
   exit_price_usd: number;
+  /** 名义仓位 = 保证金 × 杠杆；由录入时推导，不再手动填写。 */
   amount: number;
+  /** 保证金（USD），收益额以此为基数。 */
+  margin_usd: number | null;
   leverage: number | null;
   roi: number;
   pnl_usd: number;
@@ -85,23 +88,230 @@ export type HoldingRecord = {
 };
 
 /**
-  计算平仓记录的收益率与收益额
-  - 多仓收益率 = (平仓价 - 入场价) / 入场价 × 杠杆
-  - 空仓收益率 = (入场价 - 平仓价) / 入场价 × 杠杆
-  - 收益额 (USD) = 入场价值 (数量 × 入场价) × 收益率 = 数量 × (平仓价 - 入场价) × 方向 × 杠杆
-*/
+ * 读取记录的保证金。
+ * 新数据直接用 margin_usd；旧数据按「数量 × 入场价 / 杠杆」回推。
+ */
+export function recordMargin(record: HoldingRecord): number | null {
+  if (record.margin_usd != null && Number.isFinite(record.margin_usd)) {
+    return record.margin_usd;
+  }
+  const leverage = record.leverage || 1;
+  if (!record.amount || !record.entry_price_usd || !leverage) return null;
+  return (record.amount * record.entry_price_usd) / leverage;
+}
+
+/** 平仓记录按自然周（周一至周日）分组后的结构。 */
+export type RecordWeekGroup = {
+  key: string;
+  label: string;
+  records: HoldingRecord[];
+  totalPnl: number;
+};
+
+/** 平仓记录按「年 → 月 → 周」逐层聚合后的节点。 */
+export type RecordPeriodNode = {
+  key: string;
+  label: string;
+  /** 该节点下的全部记录（年/月节点为其子节点记录的并集）。 */
+  records: HoldingRecord[];
+  totalPnl: number;
+  count: number;
+};
+
+export type RecordMonthGroup = RecordPeriodNode & { weeks: RecordPeriodNode[] };
+export type RecordYearGroup = RecordPeriodNode & { months: RecordMonthGroup[] };
+
+/** 取某日所在周的周一 00:00（本地时区）。 */
+function startOfWeekMonday(date: Date): Date {
+  const day = date.getDay();
+  const offset = day === 0 ? -6 : 1 - day;
+  const monday = new Date(date);
+  monday.setHours(0, 0, 0, 0);
+  monday.setDate(monday.getDate() + offset);
+  return monday;
+}
+
+function localDateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function parseLocalDateKey(key: string): Date {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function formatWeekDay(date: Date): string {
+  return `${date.getMonth() + 1}/${date.getDate()}`;
+}
+
+/** 按平仓时间倒序排列，新的在前。 */
+function sortByClosedAtDesc(records: HoldingRecord[]): HoldingRecord[] {
+  return [...records].sort(
+    (a, b) => new Date(b.closed_at).getTime() - new Date(a.closed_at).getTime(),
+  );
+}
+
+/** 汇总一组记录的收益额。 */
+function sumPnl(records: HoldingRecord[]): number {
+  return records.reduce((sum, item) => sum + (item.pnl_usd || 0), 0);
+}
+
+/** 周标签：本周/上周用相对表述，其余直接给出区间。 */
+function weekLabel(
+  monday: Date,
+  thisWeekKey: string,
+  lastWeekKey: string,
+  key: string,
+): string {
+  const sunday = new Date(monday);
+  sunday.setDate(sunday.getDate() + 6);
+  const range = `${formatWeekDay(monday)} – ${formatWeekDay(sunday)}`;
+  if (key === thisWeekKey) return `本周 · ${range}`;
+  if (key === lastWeekKey) return `上周 · ${range}`;
+  return range;
+}
+
+/**
+ * 将平仓记录按周折叠分组，最近的周在前。
+ * 标签示例：「本周 · 9/22 – 9/28」「上周 · 9/15 – 9/21」「2026年 · 9/1 – 9/7」
+ */
+export function groupRecordsByWeek(
+  records: HoldingRecord[],
+): RecordWeekGroup[] {
+  const now = new Date();
+  const thisWeekKey = localDateKey(startOfWeekMonday(now));
+  const lastWeekDate = startOfWeekMonday(now);
+  lastWeekDate.setDate(lastWeekDate.getDate() - 7);
+  const lastWeekKey = localDateKey(lastWeekDate);
+
+  const buckets = new Map<string, HoldingRecord[]>();
+  for (const record of records) {
+    const closed = new Date(record.closed_at);
+    if (Number.isNaN(closed.getTime())) continue;
+    const key = localDateKey(startOfWeekMonday(closed));
+    const list = buckets.get(key);
+    if (list) list.push(record);
+    else buckets.set(key, [record]);
+  }
+
+  return [...buckets.entries()]
+    .sort(([a], [b]) => (a < b ? 1 : a > b ? -1 : 0))
+    .map(([key, weekRecords]) => {
+      const monday = parseLocalDateKey(key);
+      const sorted = sortByClosedAtDesc(weekRecords);
+      return {
+        key,
+        label: `${monday.getFullYear()}年 · ${weekLabel(monday, thisWeekKey, lastWeekKey, key)}`,
+        records: sorted,
+        totalPnl: sumPnl(sorted),
+      };
+    });
+}
+
+/**
+ * 将平仓记录按「年 → 月 → 周」层层折叠分组，最近的层级在前。
+ * 跨月的自然周归属到周一所在的月份。
+ */
+export function groupRecordsByPeriod(
+  records: HoldingRecord[],
+): RecordYearGroup[] {
+  const now = new Date();
+  const thisWeekKey = localDateKey(startOfWeekMonday(now));
+  const lastWeekDate = startOfWeekMonday(now);
+  lastWeekDate.setDate(lastWeekDate.getDate() - 7);
+  const lastWeekKey = localDateKey(lastWeekDate);
+
+  type WeekBucket = { key: string; monday: Date; records: HoldingRecord[] };
+  const years = new Map<number, Map<number, Map<string, WeekBucket>>>();
+
+  for (const record of records) {
+    const closed = new Date(record.closed_at);
+    if (Number.isNaN(closed.getTime())) continue;
+    const monday = startOfWeekMonday(closed);
+    const weekKey = localDateKey(monday);
+    const year = monday.getFullYear();
+    const month = monday.getMonth();
+
+    let months = years.get(year);
+    if (!months) {
+      months = new Map();
+      years.set(year, months);
+    }
+    let weeks = months.get(month);
+    if (!weeks) {
+      weeks = new Map();
+      months.set(month, weeks);
+    }
+    const bucket = weeks.get(weekKey);
+    if (bucket) bucket.records.push(record);
+    else weeks.set(weekKey, { key: weekKey, monday, records: [record] });
+  }
+
+  return [...years.entries()]
+    .sort(([a], [b]) => b - a)
+    .map(([year, months]) => {
+      const monthGroups: RecordMonthGroup[] = [...months.entries()]
+        .sort(([a], [b]) => b - a)
+        .map(([month, weeks]) => {
+          const weekGroups: RecordPeriodNode[] = [...weeks.values()]
+            .sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0))
+            .map((week) => {
+              const sorted = sortByClosedAtDesc(week.records);
+              return {
+                key: week.key,
+                label: weekLabel(week.monday, thisWeekKey, lastWeekKey, week.key),
+                records: sorted,
+                totalPnl: sumPnl(sorted),
+                count: sorted.length,
+              };
+            });
+          const monthRecords = weekGroups.flatMap((week) => week.records);
+          return {
+            key: `${year}-${String(month + 1).padStart(2, "0")}`,
+            label: `${month + 1} 月`,
+            records: monthRecords,
+            totalPnl: sumPnl(monthRecords),
+            count: monthRecords.length,
+            weeks: weekGroups,
+          };
+        });
+      const yearRecords = monthGroups.flatMap((month) => month.records);
+      return {
+        key: String(year),
+        label: `${year} 年`,
+        records: yearRecords,
+        totalPnl: sumPnl(yearRecords),
+        count: yearRecords.length,
+        months: monthGroups,
+      };
+    });
+}
+
+/**
+ * 计算平仓记录的收益率、收益额与名义仓位。
+ * - 多仓收益率 = (平仓价 − 入场价) / 入场价 × 杠杆
+ * - 空仓收益率 = (入场价 − 平仓价) / 入场价 × 杠杆
+ * - 收益额 (USD) = 保证金 × 收益率
+ * - 名义仓位 amount = 保证金 × 杠杆
+ */
 export function calculateRecordMetrics(
   entryPrice: number,
   exitPrice: number,
-  amount: number,
+  marginUsd: number,
   direction: HoldingDirection,
   leverage: number = 1,
 ) {
-  if (!entryPrice || entryPrice <= 0) return { roi: 0, pnlUsd: 0 };
+  const lev = leverage || 1;
+  if (!entryPrice || entryPrice <= 0 || !marginUsd || marginUsd <= 0) {
+    return { roi: 0, pnlUsd: 0, amount: 0 };
+  }
   const dirMultiplier = direction === "short" ? -1 : 1;
   const priceDiff = exitPrice - entryPrice;
-  const rawRoi = (priceDiff / entryPrice) * dirMultiplier;
-  const roi = rawRoi * (leverage || 1);
-  const pnlUsd = amount * entryPrice * roi;
-  return { roi, pnlUsd };
+  const roi = (priceDiff / entryPrice) * dirMultiplier * lev;
+  const pnlUsd = marginUsd * roi;
+  const amount = marginUsd * lev;
+  return { roi, pnlUsd, amount };
 }

@@ -6,9 +6,11 @@ import { useEffect, useState } from "react";
 import Opening from "./opening";
 import {
   formatRoi,
+  groupRecordsByWeek,
   holdingRoi,
   marketValue,
   markPrice,
+  recordMargin,
   roiClass,
   type Holding,
   type HoldingRecord,
@@ -196,6 +198,7 @@ function PortfolioModal({
   const filteredRecords = records.filter((item) =>
     cleanSearch ? item.asset.includes(cleanSearch) : true,
   );
+  const recordWeeks = groupRecordsByWeek(filteredRecords);
 
   const isInHolding = holdings.some((item) => item.asset === cleanSearch);
 
@@ -399,54 +402,94 @@ function PortfolioModal({
         {/* 历史持仓记录 TAB (所有人均可查看：包含入场价格，平仓价格，收益率) */}
         {activeTab === "records" && (
           <>
-            {filteredRecords.length ? (
+            {recordWeeks.length ? (
               <div className="portfolio-detail-list">
-                {filteredRecords.map((item) => {
-                  const direction = item.direction === "short" ? "short" : "long";
-                  return (
-                    <div className="portfolio-detail" key={item.id}>
-                      <div className="portfolio-detail-title">
-                        <div className="asset-heading">
-                          <strong>{item.asset}</strong>
-                          <span className={`position-badge ${direction}`}>
-                            {direction === "short" ? "空仓" : "多仓"}
-                          </span>
+                {recordWeeks.map((week, weekIndex) => (
+                  <details
+                    className="portfolio-record-week"
+                    key={week.key}
+                    open={weekIndex === 0}
+                  >
+                    <summary className="portfolio-record-week-summary">
+                      <span>{week.label}</span>
+                      <span className="week-meta">{week.records.length} 笔</span>
+                      <span
+                        className={`week-pnl ${week.totalPnl >= 0 ? "up" : "down"}`}
+                      >
+                        ${week.totalPnl >= 0 ? "+" : ""}
+                        {week.totalPnl.toFixed(2)}
+                      </span>
+                    </summary>
+                    {week.records.map((item) => {
+                      const direction =
+                        item.direction === "short" ? "short" : "long";
+                      const margin = recordMargin(item);
+                      return (
+                        <div className="portfolio-detail" key={item.id}>
+                          <div className="portfolio-detail-title">
+                            <div className="asset-heading">
+                              <strong>{item.asset}</strong>
+                              <span className={`position-badge ${direction}`}>
+                                {direction === "short" ? "空仓" : "多仓"}
+                              </span>
+                            </div>
+                            <span>
+                              平仓时间：
+                              {new Date(item.closed_at).toLocaleString("zh-CN")}
+                            </span>
+                          </div>
+                          <div
+                            className="portfolio-metrics"
+                            style={{ gridTemplateColumns: "repeat(5, 1fr)" }}
+                          >
+                            <div>
+                              <small>杠杆倍数</small>
+                              <b>
+                                {item.leverage == null
+                                  ? "—"
+                                  : `${item.leverage}x`}
+                              </b>
+                            </div>
+                            <div>
+                              <small>保证金</small>
+                              <b>
+                                {margin == null
+                                  ? "—"
+                                  : `$${margin.toLocaleString(undefined, {
+                                      maximumFractionDigits: 2,
+                                    })}`}
+                              </b>
+                            </div>
+                            <div>
+                              <small>入场价格</small>
+                              <b>
+                                $
+                                {item.entry_price_usd.toLocaleString(undefined, {
+                                  maximumFractionDigits: 4,
+                                })}
+                              </b>
+                            </div>
+                            <div>
+                              <small>平仓价格</small>
+                              <b>
+                                $
+                                {item.exit_price_usd.toLocaleString(undefined, {
+                                  maximumFractionDigits: 4,
+                                })}
+                              </b>
+                            </div>
+                            <div>
+                              <small>平仓收益率</small>
+                              <b className={roiClass(item.roi)}>
+                                {formatRoi(item.roi) ?? "—"}
+                              </b>
+                            </div>
+                          </div>
                         </div>
-                        <span>平仓时间：{new Date(item.closed_at).toLocaleString("zh-CN")}</span>
-                      </div>
-                      <div className="portfolio-metrics" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
-                        <div>
-                          <small>杠杆倍数</small>
-                          <b>{item.leverage == null ? "—" : `${item.leverage}x`}</b>
-                        </div>
-                        <div>
-                          <small>平仓数量</small>
-                          <b>
-                            {item.amount.toLocaleString(undefined, {
-                              maximumFractionDigits: 8,
-                            })}
-                          </b>
-                        </div>
-                        <div>
-                          <small>入场价格</small>
-                          <b>
-                            ${item.entry_price_usd.toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                          </b>
-                        </div>
-                        <div>
-                          <small>平仓价格</small>
-                          <b>
-                            ${item.exit_price_usd.toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                          </b>
-                        </div>
-                        <div>
-                          <small>平仓收益率</small>
-                          <b className={roiClass(item.roi)}>{formatRoi(item.roi) ?? "—"}</b>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </details>
+                ))}
               </div>
             ) : records.length ? (
               <p className="portfolio-empty">未查找到匹配“{searchedSymbol}”的历史平仓记录。</p>
@@ -583,7 +626,7 @@ export default function Home() {
     // 获取历史持仓/平仓记录
     fetch(
       url +
-        "/rest/v1/portfolio_records?select=id,asset,direction,entry_price_usd,exit_price_usd,amount,leverage,roi,pnl_usd,closed_at&is_public=eq.true&order=closed_at.desc",
+        "/rest/v1/portfolio_records?select=id,asset,direction,entry_price_usd,exit_price_usd,amount,margin_usd,leverage,roi,pnl_usd,closed_at&is_public=eq.true&order=closed_at.desc",
       { headers: { apikey: key }, cache: "no-store" },
     )
       .then((response) => (response.ok ? response.json() : []))

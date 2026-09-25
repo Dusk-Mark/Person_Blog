@@ -385,12 +385,85 @@
   border-top: 1px solid #dce5e8;
   margin-top: 16px;
 }
+/* 年 / 月 / 周 层层折叠的平仓记录 */
+.record-period {
+  border-bottom: 1px solid #e5ecef;
+}
+.record-period-summary {
+  display: grid;
+  grid-template-columns: auto auto 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 4px;
+  cursor: pointer;
+  list-style: none;
+  color: #172b3c;
+}
+.record-period-summary::-webkit-details-marker {
+  display: none;
+}
+.record-period-summary::before {
+  content: "▸";
+  color: #8996a2;
+  font-size: 11px;
+}
+.record-period[open] > .record-period-summary::before {
+  content: "▾";
+}
+.record-period-summary .period-label {
+  font-weight: 700;
+}
+.record-period-summary .period-meta {
+  color: #7c8d9c;
+  font-size: 12px;
+}
+.record-period-summary .period-pnl {
+  font-family: Consolas, monospace;
+  font-weight: 700;
+  font-size: 13px;
+  text-align: right;
+}
+.record-period-summary .period-pnl.up {
+  color: #139d7f;
+}
+.record-period-summary .period-pnl.down {
+  color: #d65d6d;
+}
+/* 层级缩进：越深层越向右，并以左侧细线标示从属关系 */
+.record-period-body {
+  padding-left: 14px;
+  border-left: 1px solid #eef3f6;
+  margin-left: 4px;
+}
+.record-year > .record-period-summary {
+  font-size: 14px;
+}
+.record-year > .record-period-summary .period-label {
+  color: #0f2635;
+}
+.record-month > .record-period-summary {
+  font-size: 13px;
+}
+.record-month > .record-period-summary .period-label {
+  color: #24404f;
+}
+.record-week > .record-period-summary {
+  font-size: 12.5px;
+  padding: 9px 4px;
+}
+.record-week > .record-period-summary .period-label {
+  font-weight: 600;
+  color: #40596b;
+}
+.record-rows {
+  padding-bottom: 4px;
+}
 .admin-record-row {
   display: grid;
   grid-template-columns: 1.2fr 1.5fr 1fr 1.5fr 1.3fr auto;
   gap: 12px;
   padding: 11px 0;
-  border-bottom: 1px solid #e5ecef;
+  border-top: 1px solid #eef3f6;
   align-items: center;
   font-size: 12px;
 }
